@@ -291,8 +291,7 @@ describe('trade()', () => {
       const { _deps, evaluate } = mockDeps({
         'isReplayStarted': true,
         [action === 'close' ? 'closePosition' : action]: undefined,
-        'position': 1,
-        'realizedPL': 50.5,
+        'realizedPL': { position: 1, realized_pnl: 50.5 },
       });
       const result = await trade({ action, _deps });
       assert.equal(result.success, true);
@@ -323,32 +322,27 @@ describe('trade()', () => {
 
 describe('status()', () => {
   it('returns full status object', async () => {
-    let callIdx = 0;
+    const calls = [];
     const evaluate = async (expr) => {
-      callIdx++;
-      // Call 1: big inline IIFE for status fields
-      if (callIdx === 1) {
-        return {
-          is_replay_available: true,
-          is_replay_started: true,
-          is_autoplay_started: false,
-          replay_mode: 'ActiveChart',
-          current_date: 1700000000,
-          autoplay_delay: 1000,
-        };
-      }
-      // Call 2: position
-      if (callIdx === 2) return 2;
-      // Call 3: realizedPL
-      if (callIdx === 3) return 123.45;
-      return undefined;
+      calls.push(expr);
+      return {
+        is_replay_available: true,
+        is_replay_started: true,
+        is_autoplay_started: false,
+        replay_mode: 'ActiveChart',
+        current_date: 1700000000,
+        autoplay_delay: 1000,
+        position: 2,
+        realized_pnl: 123.45,
+      };
     };
-    evaluate.calls = [];
+    evaluate.calls = calls;
     const result = await status({ _deps: { evaluate, getReplayApi: mockGetReplayApi() } });
     assert.equal(result.success, true);
     assert.equal(result.is_replay_started, true);
     assert.equal(result.current_date, 1700000000);
     assert.equal(result.position, 2);
     assert.equal(result.realized_pnl, 123.45);
+    assert.equal(calls.length, 1, 'status reads should be folded into a single evaluate');
   });
 });

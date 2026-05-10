@@ -342,4 +342,72 @@ describe('path traversal prevention', () => {
     assert.ok(!sanitizeFilename('.hidden').startsWith('.'));
     assert.ok(sanitizeFilename('').length > 0);
   });
+
+  it('sanitizeFilename neutralizes the canonical traversal payload', async () => {
+    const { sanitizeFilename } = await import('../src/core/capture.js');
+    const out = sanitizeFilename('../../etc/passwd');
+    assert.ok(!out.includes('/') && !out.includes('../') && !out.startsWith('.'));
+  });
+
+  it('sanitizeFilename strips forward and back slashes anywhere', async () => {
+    const { sanitizeFilename } = await import('../src/core/capture.js');
+    assert.ok(!sanitizeFilename('foo/bar').includes('/'));
+    assert.ok(!sanitizeFilename('foo\\bar').includes('\\'));
+  });
+
+  it('sanitizeFilename returns a non-empty placeholder for empty input', async () => {
+    const { sanitizeFilename } = await import('../src/core/capture.js');
+    const out = sanitizeFilename('');
+    assert.ok(out.length > 0 && !out.startsWith('.'));
+  });
+});
+
+// ── buildGraphicsJS allowlist ────────────────────────────────────────────
+
+describe('buildGraphicsJS — collection/map allowlist', () => {
+  it('throws on unknown collection name', async () => {
+    const { buildGraphicsJS } = await import('../src/core/data.js');
+    assert.throws(
+      () => buildGraphicsJS('foo', 'lines', ''),
+      /unsupported collectionName "foo"/,
+    );
+  });
+
+  it('throws on unknown map key', async () => {
+    const { buildGraphicsJS } = await import('../src/core/data.js');
+    assert.throws(
+      () => buildGraphicsJS('dwglines', 'evil', ''),
+      /unsupported mapKey "evil"/,
+    );
+  });
+
+  it('rejects injection attempts in collection/map names', async () => {
+    const { buildGraphicsJS } = await import('../src/core/data.js');
+    assert.throws(() => buildGraphicsJS('dwglines\'); alert(1); //', 'lines', ''));
+    assert.throws(() => buildGraphicsJS('dwglines', 'lines\'); alert(1); //', ''));
+  });
+
+  it('accepts each whitelisted collection/map pair', async () => {
+    const { buildGraphicsJS } = await import('../src/core/data.js');
+    const pairs = [
+      ['dwglines', 'lines'],
+      ['dwglabels', 'labels'],
+      ['dwgboxes', 'boxes'],
+      ['dwgtablecells', 'tableCells'],
+    ];
+    for (const [c, m] of pairs) {
+      const js = buildGraphicsJS(c, m, '');
+      assert.ok(typeof js === 'string' && js.includes(c) && js.includes(m));
+    }
+  });
+
+  it('safeStrings the filter so user input cannot escape the string literal', async () => {
+    const { buildGraphicsJS } = await import('../src/core/data.js');
+    const payload = '"); alert(1); //';
+    const js = buildGraphicsJS('dwglines', 'lines', payload);
+    // The literal must contain the JSON-encoded form (with escaped quote),
+    // not the bare unescaped payload that could close the string and inject code.
+    assert.ok(js.includes(safeString(payload)), 'filter must be wrapped via safeString');
+    assert.ok(js.includes('\\"); alert(1); //'), 'quote inside payload must be backslash-escaped');
+  });
 });

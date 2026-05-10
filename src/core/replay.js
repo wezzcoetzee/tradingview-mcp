@@ -115,9 +115,14 @@ export async function trade({ action, _deps }) {
   else if (action === 'close') await evaluate(`${rp}.closePosition()`);
   else throw new Error('Invalid action. Use: buy, sell, or close');
 
-  const position = await evaluate(wv(`${rp}.position()`));
-  const pnl = await evaluate(wv(`${rp}.realizedPL()`));
-  return { success: true, action, position, realized_pnl: pnl };
+  const result = await evaluate(`
+    (function() {
+      var r = ${rp};
+      function unwrap(v) { return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; }
+      return { position: unwrap(r.position()), realized_pnl: unwrap(r.realizedPL()) };
+    })()
+  `);
+  return { success: true, action, position: result.position, realized_pnl: result.realized_pnl };
 }
 
 export async function status({ _deps } = {}) {
@@ -134,10 +139,10 @@ export async function status({ _deps } = {}) {
         replay_mode: unwrap(r.replayMode()),
         current_date: unwrap(r.currentDate()),
         autoplay_delay: unwrap(r.autoplayDelay()),
+        position: unwrap(r.position()),
+        realized_pnl: unwrap(r.realizedPL()),
       };
     })()
   `);
-  const pos = await evaluate(wv(`${rp}.position()`));
-  const pnl = await evaluate(wv(`${rp}.realizedPL()`));
-  return { success: true, ...st, position: pos, realized_pnl: pnl };
+  return { success: true, ...st };
 }

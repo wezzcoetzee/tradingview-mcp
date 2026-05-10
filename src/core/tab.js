@@ -78,6 +78,10 @@ export async function closeTab() {
 
   await new Promise(r => setTimeout(r, 1000));
 
+  // The cached CDP client points at the now-closed target. Drop it so the
+  // next call reconnects to a live tab instead of erroring on a stale handle.
+  await disconnect();
+
   const after = await list();
   return { success: true, action: 'tab_closed', tabs_before: before.tab_count, tabs_after: after.tab_count };
 }
@@ -86,9 +90,12 @@ export async function closeTab() {
  * Switch to a tab by index. Reconnects CDP to the new target.
  */
 export async function switchTab({ index }) {
-  const tabs = await list();
   const idx = Number(index);
+  if (!Number.isInteger(idx) || idx < 0) {
+    throw new Error(`Tab index must be a non-negative integer (got ${JSON.stringify(index)})`);
+  }
 
+  const tabs = await list();
   if (idx >= tabs.tab_count) {
     throw new Error(`Tab index ${idx} out of range (have ${tabs.tab_count} tabs)`);
   }
