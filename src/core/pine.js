@@ -166,7 +166,7 @@ export function analyze({ source }) {
 
   if (!isV6 && source.includes('//@version=')) {
     const vMatch = source.match(/\/\/@version=(\d+)/);
-    if (vMatch && parseInt(vMatch[1]) < 5) {
+    if (vMatch && parseInt(vMatch[1], 10) < 5) {
       diagnostics.push({
         line: 1, column: 1,
         message: `Script uses Pine v${vMatch[1]} — consider upgrading to v6 for latest features`,

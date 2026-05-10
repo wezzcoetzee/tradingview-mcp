@@ -117,7 +117,7 @@ export async function deleteAlerts({ delete_all }) {
         return { context_menu_opened: false };
       })()
     `);
-    return { success: true, note: 'Alert deletion requires manual confirmation in the context menu.', context_menu_opened: result?.context_menu_opened || false, source: 'dom_fallback' };
+    return { success: false, note: 'Alert deletion requires manual confirmation in the TradingView context menu — no alerts were deleted by this call.', context_menu_opened: result?.context_menu_opened || false, source: 'dom_fallback' };
   }
   throw new Error('Individual alert deletion not yet supported. Use delete_all: true.');
 }
