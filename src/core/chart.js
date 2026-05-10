@@ -97,9 +97,18 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
         chart.createStudy(${safeString(indicator)}, false, false, ${JSON.stringify(inputArr)});
       })()
     `);
-    await new Promise(r => setTimeout(r, 1500));
-    const after = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
-    const newIds = (after || []).filter(id => !(before || []).includes(id));
+
+    // Poll for the new study id rather than relying on a fixed sleep —
+    // slow charts may take longer than 1.5s; fast charts shouldn't pay for it.
+    const beforeIds = before || [];
+    let newIds = [];
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 200));
+      const after = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
+      newIds = (after || []).filter(id => !beforeIds.includes(id));
+      if (newIds.length > 0) break;
+    }
     return { success: newIds.length > 0, action: 'add', indicator, entity_id: newIds[0] || null, new_study_count: newIds.length };
   } else if (action === 'remove') {
     if (!entity_id) throw new Error('entity_id required for remove action. Use chart_get_state to find study IDs.');

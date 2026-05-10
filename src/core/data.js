@@ -9,10 +9,25 @@ const MAX_TRADES = 20;
 const CHART_API = KNOWN_PATHS.chartApi;
 const BARS_PATH = KNOWN_PATHS.mainSeriesBars;
 
+// In-page helper: locate the first strategy data source on the chart.
+// Used by getStrategyResults / getTrades / getEquity to avoid drift.
+const FIND_STRATEGY_JS = `
+  function findStrategy(sources) {
+    for (var i = 0; i < sources.length; i++) {
+      var s = sources[i];
+      if (!s || !s.metaInfo) continue;
+      var mi = s.metaInfo();
+      if (!mi || mi.is_price_study !== false) continue;
+      if (s.reportData || s.performance || s.ordersData || s.equityData) return s;
+    }
+    return null;
+  }
+`;
+
 const ALLOWED_GRAPHICS_COLLECTIONS = new Set(['dwglines', 'dwglabels', 'dwgboxes', 'dwgtablecells']);
 const ALLOWED_GRAPHICS_MAP_KEYS = new Set(['lines', 'labels', 'boxes', 'tableCells']);
 
-function buildGraphicsJS(collectionName, mapKey, filter) {
+export function buildGraphicsJS(collectionName, mapKey, filter) {
   if (!ALLOWED_GRAPHICS_COLLECTIONS.has(collectionName)) {
     throw new Error(`buildGraphicsJS: unsupported collectionName "${collectionName}"`);
   }
@@ -108,10 +123,10 @@ export async function getOhlcv({ count, summary } = {}) {
       period: { from: first.time, to: last.time },
       open: first.open, close: last.close,
       high, low,
-      range: Math.round((high - low) * 100) / 100,
-      change: Math.round((last.close - first.open) * 100) / 100,
+      range: high - low,
+      change: last.close - first.open,
       change_pct: first.open !== 0
-        ? Math.round(((last.close - first.open) / first.open) * 10000) / 100 + '%'
+        ? ((last.close - first.open) / first.open) * 100 + '%'
         : null,
       avg_volume: Math.round(volSum / bars.length),
       last_5_bars: bars.slice(-5),
@@ -150,14 +165,11 @@ export async function getIndicator({ entity_id }) {
 export async function getStrategyResults() {
   const results = await evaluate(`
     (function() {
+      ${FIND_STRATEGY_JS}
       try {
         var chart = ${CHART_API}._chartWidget;
         var sources = chart.model().model().dataSources();
-        var strat = null;
-        for (var i = 0; i < sources.length; i++) {
-          var s = sources[i];
-          if (s.metaInfo && s.metaInfo().is_price_study === false && (s.reportData || s.performance)) { strat = s; break; }
-        }
+        var strat = findStrategy(sources);
         if (!strat) return {metrics: {}, source: 'internal_api', error: 'No strategy found on chart. Add a strategy indicator first.'};
         var metrics = {};
         if (strat.reportData) {
@@ -183,14 +195,11 @@ export async function getTrades({ max_trades } = {}) {
   const limit = Math.min(max_trades ?? 20, MAX_TRADES);
   const trades = await evaluate(`
     (function() {
+      ${FIND_STRATEGY_JS}
       try {
         var chart = ${CHART_API}._chartWidget;
         var sources = chart.model().model().dataSources();
-        var strat = null;
-        for (var i = 0; i < sources.length; i++) {
-          var s = sources[i];
-          if (s.metaInfo && s.metaInfo().is_price_study === false && (s.ordersData || s.reportData)) { strat = s; break; }
-        }
+        var strat = findStrategy(sources);
         if (!strat) return {trades: [], source: 'internal_api', error: 'No strategy found on chart.'};
         var orders = null;
         if (strat.ordersData) { orders = typeof strat.ordersData === 'function' ? strat.ordersData() : strat.ordersData; if (orders && typeof orders.value === 'function') orders = orders.value(); }
@@ -219,14 +228,11 @@ export async function getTrades({ max_trades } = {}) {
 export async function getEquity() {
   const equity = await evaluate(`
     (function() {
+      ${FIND_STRATEGY_JS}
       try {
         var chart = ${CHART_API}._chartWidget;
         var sources = chart.model().model().dataSources();
-        var strat = null;
-        for (var i = 0; i < sources.length; i++) {
-          var s = sources[i];
-          if (s.metaInfo && s.metaInfo().is_price_study === false && (s.reportData || s.performance)) { strat = s; break; }
-        }
+        var strat = findStrategy(sources);
         if (!strat) return {data: [], source: 'internal_api', error: 'No strategy found on chart.'};
         var data = [];
         if (strat.equityData) {
@@ -273,10 +279,24 @@ export async function getQuote({ symbol } = {}) {
         if (last) { quote.time = last[0]; quote.open = last[1]; quote.high = last[2]; quote.low = last[3]; quote.close = last[4]; quote.last = last[4]; quote.volume = last[5] || 0; }
       }
       try {
-        var bidEl = document.querySelector('[class*="bid"] [class*="price"], [class*="dom-"] [class*="bid"]');
-        var askEl = document.querySelector('[class*="ask"] [class*="price"], [class*="dom-"] [class*="ask"]');
-        if (bidEl) quote.bid = parseFloat(bidEl.textContent.replace(/[^0-9.\\-]/g, ''));
-        if (askEl) quote.ask = parseFloat(askEl.textContent.replace(/[^0-9.\\-]/g, ''));
+        // Only read bid/ask when a DOM/Depth panel actually exists — otherwise
+        // the [class*="bid"] / [class*="ask"] substring match picks up
+        // unrelated obfuscated class names and yields garbage or NaN.
+        var domPanel = document.querySelector('[data-name="dom"]')
+          || document.querySelector('[class*="depth"]')
+          || document.querySelector('[class*="dom-"]');
+        if (domPanel) {
+          var bidEl = domPanel.querySelector('[class*="bid"] [class*="price"], [class*="bid"]');
+          var askEl = domPanel.querySelector('[class*="ask"] [class*="price"], [class*="ask"]');
+          if (bidEl) {
+            var bid = parseFloat(bidEl.textContent.replace(/[^0-9.\\-]/g, ''));
+            if (Number.isFinite(bid)) quote.bid = bid;
+          }
+          if (askEl) {
+            var ask = parseFloat(askEl.textContent.replace(/[^0-9.\\-]/g, ''));
+            if (Number.isFinite(ask)) quote.ask = ask;
+          }
+        }
       } catch(e) {}
       try {
         var hdr = document.querySelector('[class*="headerRow"] [class*="last-"]');
@@ -385,8 +405,8 @@ export async function getPineLines({ study_filter, verbose } = {}) {
     const allLines = [];
     for (const item of s.items) {
       const v = item.raw;
-      const y1 = v.y1 != null ? Math.round(v.y1 * 100) / 100 : null;
-      const y2 = v.y2 != null ? Math.round(v.y2 * 100) / 100 : null;
+      const y1 = v.y1 != null ? v.y1 : null;
+      const y2 = v.y2 != null ? v.y2 : null;
       if (verbose) allLines.push({ id: item.id, y1, y2, x1: v.x1, x2: v.x2, horizontal: v.y1 === v.y2, style: v.st, width: v.w, color: v.ci });
       if (y1 != null && v.y1 === v.y2 && !seen[y1]) { hLevels.push(y1); seen[y1] = true; }
     }
@@ -408,7 +428,7 @@ export async function getPineLabels({ study_filter, max_labels, verbose } = {}) 
     let labels = s.items.map(item => {
       const v = item.raw;
       const text = v.t || '';
-      const price = v.y != null ? Math.round(v.y * 100) / 100 : null;
+      const price = v.y != null ? v.y : null;
       if (verbose) return { id: item.id, text, price, x: v.x, yloc: v.yl, size: v.sz, textColor: v.tci, color: v.ci };
       return { text, price };
     }).filter(l => l.text || l.price != null);
@@ -457,8 +477,8 @@ export async function getPineBoxes({ study_filter, verbose } = {}) {
     const allBoxes = [];
     for (const item of s.items) {
       const v = item.raw;
-      const high = v.y1 != null && v.y2 != null ? Math.round(Math.max(v.y1, v.y2) * 100) / 100 : null;
-      const low = v.y1 != null && v.y2 != null ? Math.round(Math.min(v.y1, v.y2) * 100) / 100 : null;
+      const high = v.y1 != null && v.y2 != null ? Math.max(v.y1, v.y2) : null;
+      const low = v.y1 != null && v.y2 != null ? Math.min(v.y1, v.y2) : null;
       if (verbose) allBoxes.push({ id: item.id, high, low, x1: v.x1, x2: v.x2, borderColor: v.c, bgColor: v.bc });
       if (high != null && low != null) { const key = high + ':' + low; if (!seen[key]) { zones.push({ high, low }); seen[key] = true; } }
     }

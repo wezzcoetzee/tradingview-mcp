@@ -114,6 +114,9 @@ export async function setLayout({ layout }) {
  */
 export async function focus({ index }) {
   const idx = Number(index);
+  if (!Number.isInteger(idx) || idx < 0) {
+    throw new Error(`Pane index must be a non-negative integer (got ${JSON.stringify(index)})`);
+  }
   const result = await evaluate(`
     (function() {
       var cwc = ${CWC};
@@ -136,6 +139,9 @@ export async function focus({ index }) {
  */
 export async function setSymbol({ index, symbol }) {
   const idx = Number(index);
+  if (!Number.isInteger(idx) || idx < 0) {
+    throw new Error(`Pane index must be a non-negative integer (got ${JSON.stringify(index)})`);
+  }
 
   // Focus the target pane first
   await focus({ index: idx });
