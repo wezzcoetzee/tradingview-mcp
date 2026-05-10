@@ -3,6 +3,7 @@
 import CDP from 'chrome-remote-interface';
 import { readFileSync } from 'fs';
 
+async function main() {
 const srcPath = new URL('../scripts/current.pine', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 const src = readFileSync(srcPath, 'utf-8');
 
@@ -49,3 +50,9 @@ if (errors.length === 0) {
 }
 
 await c.close();
+}
+
+main().catch(err => {
+  console.error(`pine_push failed: ${err.message}`);
+  process.exit(1);
+});

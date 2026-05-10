@@ -9,11 +9,17 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = join(dirname(dirname(__dirname)), 'screenshots');
 
+export function sanitizeFilename(name) {
+  let s = String(name).replace(/[^\w.-]/g, '_').slice(0, 80);
+  if (s.startsWith('.') || s.length === 0) s = '_' + s;
+  return s;
+}
+
 export async function captureScreenshot({ region, filename, method } = {}) {
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const fname = (filename || `tv_${region}_${ts}`).replace(/[\/\\]/g, '_');
+  const fname = sanitizeFilename(filename || `tv_${region}_${ts}`);
   const filePath = join(SCREENSHOT_DIR, `${fname}.png`);
 
   if (method === 'api') {

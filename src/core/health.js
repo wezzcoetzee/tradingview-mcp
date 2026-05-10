@@ -161,7 +161,7 @@ export async function uiState() {
 
 export async function launch({ port, kill_existing } = {}) {
   const cdpPort = port || 9222;
-  const killFirst = kill_existing !== false;
+  const killFirst = kill_existing === true;
   const platform = process.platform;
 
   const pathMap = {
@@ -213,8 +213,15 @@ export async function launch({ port, kill_existing } = {}) {
 
   if (killFirst) {
     try {
-      if (platform === 'win32') execSync('taskkill /F /IM TradingView.exe', { timeout: 5000 });
-      else execSync('pkill -f TradingView', { timeout: 5000 });
+      if (platform === 'win32') {
+        execSync('taskkill /F /IM TradingView.exe', { timeout: 5000 });
+      } else {
+        const pids = execSync(`pgrep -fx ${JSON.stringify(tvPath)}`, { timeout: 5000 })
+          .toString().trim().split('\n').filter(Boolean);
+        for (const pid of pids) {
+          try { process.kill(Number(pid), 'SIGTERM'); } catch {}
+        }
+      }
       await new Promise(r => setTimeout(r, 1500));
     } catch { /* may not be running */ }
   }

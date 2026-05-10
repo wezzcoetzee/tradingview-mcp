@@ -12,15 +12,17 @@ const MODEL = `${CHART_API}._chartWidget.model()`;
  * Calls fetcher(), compares to last value, emits JSONL on change.
  * Writes to stdout directly for pipe-friendliness.
  */
-async function pollLoop(fetcher, { interval = 500, dedupe = true, label = 'stream' } = {}) {
-  let lastHash = null;
-  let running = true;
+const MAX_CONSECUTIVE_CDP_ERRORS = 10;
 
-  const cleanup = () => { running = false; };
+async function pollLoop(fetcher, { interval = 500, dedupe = true, label = 'stream', signal } = {}) {
+  let lastHash = null;
+  const controller = new AbortController();
+  const cleanup = () => controller.abort();
+
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
+  if (signal) signal.addEventListener('abort', cleanup, { once: true });
 
-  // Emit header with compliance notice
   const start = Date.now();
   process.stderr.write(`\u26A0  tradingview-mcp  |  Unofficial tool. Not affiliated with TradingView Inc. or Anthropic.\n`);
   process.stderr.write(`   Streams from your locally running TradingView Desktop instance only.\n`);
@@ -28,34 +30,50 @@ async function pollLoop(fetcher, { interval = 500, dedupe = true, label = 'strea
   process.stderr.write(`   Ensure your usage complies with TradingView's Terms of Use.\n`);
   process.stderr.write(`[stream:${label}] started, interval=${interval}ms, Ctrl+C to stop\n`);
 
-  while (running) {
-    try {
-      const data = await fetcher();
-      if (!data) { await sleep(interval); continue; }
+  let consecutiveCdpErrors = 0;
+  try {
+    while (!controller.signal.aborted) {
+      try {
+        const data = await fetcher();
+        consecutiveCdpErrors = 0;
+        if (!data) { await sleep(interval, controller.signal); continue; }
 
-      const hash = dedupe ? JSON.stringify(data) : null;
-      if (!dedupe || hash !== lastHash) {
-        lastHash = hash;
-        const line = JSON.stringify({ ...data, _ts: Date.now(), _stream: label });
-        process.stdout.write(line + '\n');
+        const hash = dedupe ? JSON.stringify(data) : null;
+        if (!dedupe || hash !== lastHash) {
+          lastHash = hash;
+          const line = JSON.stringify({ ...data, _ts: Date.now(), _stream: label });
+          process.stdout.write(line + '\n');
+        }
+      } catch (err) {
+        if (/CDP|ECONNREFUSED/i.test(err.message)) {
+          consecutiveCdpErrors++;
+          if (consecutiveCdpErrors > MAX_CONSECUTIVE_CDP_ERRORS) {
+            process.stderr.write(`[stream:${label}] aborting after ${MAX_CONSECUTIVE_CDP_ERRORS} CDP errors: ${err.message}\n`);
+            break;
+          }
+          process.stderr.write(`[stream:${label}] CDP error (${consecutiveCdpErrors}/${MAX_CONSECUTIVE_CDP_ERRORS}): ${err.message}\n`);
+          await sleep(2000, controller.signal);
+          continue;
+        }
+        process.stderr.write(`[stream:${label}] error: ${err.message}\n`);
       }
-    } catch (err) {
-      // Connection errors — retry silently
-      if (/CDP|ECONNREFUSED/i.test(err.message)) {
-        await sleep(2000);
-        continue;
-      }
-      process.stderr.write(`[stream:${label}] error: ${err.message}\n`);
+      await sleep(interval, controller.signal);
     }
-    await sleep(interval);
+  } finally {
+    process.removeListener('SIGINT', cleanup);
+    process.removeListener('SIGTERM', cleanup);
+    process.stderr.write(`[stream:${label}] stopped after ${((Date.now() - start) / 1000).toFixed(1)}s\n`);
   }
-
-  process.stderr.write(`[stream:${label}] stopped after ${((Date.now() - start) / 1000).toFixed(1)}s\n`);
-  process.removeListener('SIGINT', cleanup);
-  process.removeListener('SIGTERM', cleanup);
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms, signal) {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    if (signal) {
+      signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+    }
+  });
+}
 
 // ── Stream: quote ──
 

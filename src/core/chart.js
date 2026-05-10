@@ -169,11 +169,13 @@ export async function scrollToDate({ date }) {
   if (res === 'D' || res === '1D') secsPerBar = 86400;
   else if (res === 'W' || res === '1W') secsPerBar = 604800;
   else if (res === 'M' || res === '1M') secsPerBar = 2592000;
+  else if (/^\d+S$/i.test(res)) secsPerBar = parseInt(res, 10);
+  else if (/^\d+T$/i.test(res)) secsPerBar = 1;
   else { const mins = parseInt(res, 10); if (!isNaN(mins)) secsPerBar = mins * 60; }
 
   const halfWindow = 25 * secsPerBar;
-  const from = timestamp - halfWindow;
-  const to = timestamp + halfWindow;
+  const from = requireFinite(timestamp - halfWindow, 'from');
+  const to = requireFinite(timestamp + halfWindow, 'to');
 
   await evaluate(`
     (function() {

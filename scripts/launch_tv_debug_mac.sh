@@ -43,8 +43,8 @@ if [ -z "$APP" ] || [ ! -f "$APP" ]; then
   exit 1
 fi
 
-# Kill any existing TradingView
-pkill -f "TradingView" 2>/dev/null
+# Kill any existing TradingView (match exact binary path, not substring)
+pkill -fx "$APP" 2>/dev/null
 sleep 1
 
 echo "Found TradingView at: $APP"

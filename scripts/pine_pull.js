@@ -3,6 +3,7 @@
 import CDP from 'chrome-remote-interface';
 import { writeFileSync } from 'fs';
 
+async function main() {
 const targets = await (await fetch('http://localhost:9222/json/list')).json();
 const t = targets.find(t => t.url?.includes('tradingview.com'));
 if (!t) { console.error('No TradingView target'); process.exit(1); }
@@ -20,3 +21,9 @@ const outPath = new URL('../scripts/current.pine', import.meta.url).pathname.rep
 writeFileSync(outPath, src);
 console.log(`Pulled ${src.split('\n').length} lines → scripts/current.pine`);
 await c.close();
+}
+
+main().catch(err => {
+  console.error(`pine_pull failed: ${err.message}`);
+  process.exit(1);
+});

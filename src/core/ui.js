@@ -287,10 +287,29 @@ export async function findElement({ query, strategy }) {
   return { success: true, query, strategy: strat, count: results?.length || 0, elements: results || [] };
 }
 
+const MAX_EVAL_EXPR_LEN = 2000;
+
 export async function uiEvaluate({ expression }) {
   if (process.env.TRADINGVIEW_MCP_ALLOW_EVAL !== '1') {
-    throw new Error('ui_evaluate is disabled. Set TRADINGVIEW_MCP_ALLOW_EVAL=1 to enable arbitrary JS execution in the TradingView page context.');
+    throw new Error(
+      'ui_evaluate is disabled. This tool runs arbitrary JS inside your logged-in '
+      + 'TradingView session — equivalent to handing the model your TradingView account. '
+      + 'Set both TRADINGVIEW_MCP_ALLOW_EVAL=1 and TRADINGVIEW_MCP_CONFIRM_EVAL=1 to enable.',
+    );
   }
+  if (process.env.TRADINGVIEW_MCP_CONFIRM_EVAL !== '1') {
+    throw new Error(
+      'ui_evaluate requires a second confirmation: set TRADINGVIEW_MCP_CONFIRM_EVAL=1 '
+      + 'in addition to TRADINGVIEW_MCP_ALLOW_EVAL=1.',
+    );
+  }
+  if (typeof expression !== 'string' || expression.length === 0) {
+    throw new Error('ui_evaluate: expression must be a non-empty string');
+  }
+  if (expression.length > MAX_EVAL_EXPR_LEN) {
+    throw new Error(`ui_evaluate: expression exceeds ${MAX_EVAL_EXPR_LEN} chars`);
+  }
+  process.stderr.write(`[ui_evaluate] ${new Date().toISOString()} ${JSON.stringify(expression)}\n`);
   const result = await evaluate(expression);
   return { success: true, result };
 }
