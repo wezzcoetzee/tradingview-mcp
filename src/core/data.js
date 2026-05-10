@@ -2,6 +2,7 @@
  * Core data access logic.
  */
 import { evaluate, evaluateAsync, KNOWN_PATHS, safeString } from '../connection.js';
+import { debug } from '../debug.js';
 
 const MAX_OHLCV_BARS = 500;
 const MAX_TRADES = 20;
@@ -86,10 +87,10 @@ export async function getOhlcv({ count, summary } = {}) {
         return {bars: result, total_bars: bars.size(), source: 'direct_bars'};
       })()
     `);
-  } catch { data = null; }
+  } catch (err) { debug('data.getOhlcv', err); data = null; }
 
   if (!data || !data.bars || data.bars.length === 0) {
-    throw new Error('Could not extract OHLCV data. The chart may still be loading.');
+    throw new Error('Could not extract OHLCV data. The chart may still be loading. Set DEBUG=tv-mcp for the underlying error.');
   }
 
   if (summary) {

@@ -1,4 +1,5 @@
 import CDP from 'chrome-remote-interface';
+import { debug } from './debug.js';
 
 let client = null;
 let targetInfo = null;
@@ -98,6 +99,7 @@ export async function connect() {
         return client;
       } catch (err) {
         lastError = err;
+        debug('connection', `attempt ${attempt + 1}/${MAX_RETRIES} failed: ${err.message}`);
         const delay = Math.min(BASE_DELAY * Math.pow(2, attempt), 30000);
         await new Promise(r => setTimeout(r, delay));
       }
@@ -155,6 +157,7 @@ export async function evaluate(expression, opts = {}) {
       || result.exceptionDetails.text
       || 'Unknown evaluation error';
     const msg = String(raw).slice(0, MAX_ERROR_DESC_LEN);
+    debug('evaluate', msg);
     throw new Error(`JS evaluation error: ${msg}`);
   }
   return result.result?.value;
