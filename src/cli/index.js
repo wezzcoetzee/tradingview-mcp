@@ -26,6 +26,10 @@ import './commands/pane.js';
 import './commands/tab.js';
 import './commands/stream.js';
 
-// Run
 import { run } from './router.js';
-await run(process.argv);
+try {
+  await run(process.argv);
+} catch (err) {
+  process.stderr.write(`${err.message}\n`);
+  process.exit(/CDP|ECONNREFUSED|chart target/i.test(err.message) ? 2 : 1);
+}

@@ -69,8 +69,11 @@ describe('safeString() — CDP injection prevention', () => {
 
   it('coerces non-strings to strings', () => {
     assert.equal(safeString(123), '"123"');
-    assert.equal(safeString(null), '"null"');
-    assert.equal(safeString(undefined), '"undefined"');
+  });
+
+  it('rejects null and undefined to prevent silent state corruption', () => {
+    assert.throws(() => safeString(null), /must not be null or undefined/);
+    assert.throws(() => safeString(undefined), /must not be null or undefined/);
   });
 
   it('prevents classic CDP injection payload', () => {
@@ -316,13 +319,27 @@ describe('source audit — no unsafe interpolation patterns', () => {
 // ── Path traversal prevention ────────────────────────────────────────────
 
 describe('path traversal prevention', () => {
-  it('capture.js strips path separators from filename', () => {
-    const source = readFileSync(new URL('../src/core/capture.js', import.meta.url), 'utf8');
-    assert.ok(source.includes(".replace(/[\\/\\\\]/g, '_')"));
+  it('sanitizeFilename strips path separators', async () => {
+    const { sanitizeFilename } = await import('../src/core/capture.js');
+    assert.equal(sanitizeFilename('../../etc/passwd'), '_.._.._etc_passwd');
+    assert.ok(!sanitizeFilename('../../etc/passwd').includes('/'));
+    assert.ok(!sanitizeFilename('..\\..\\windows').includes('\\'));
   });
 
-  it('batch.js strips path separators from filename', () => {
-    const source = readFileSync(new URL('../src/core/batch.js', import.meta.url), 'utf8');
-    assert.ok(source.includes(".replace(/[\\/\\\\]/g, '_')"));
+  it('sanitizeFilename strips control chars and null bytes', async () => {
+    const { sanitizeFilename } = await import('../src/core/capture.js');
+    assert.equal(sanitizeFilename('a\x00b\x01c'), 'a_b_c');
+    assert.equal(sanitizeFilename('a\nb\tc'), 'a_b_c');
+  });
+
+  it('sanitizeFilename caps length to prevent FS overflow', async () => {
+    const { sanitizeFilename } = await import('../src/core/capture.js');
+    assert.ok(sanitizeFilename('a'.repeat(500)).length <= 80);
+  });
+
+  it('sanitizeFilename prefixes leading-dot names', async () => {
+    const { sanitizeFilename } = await import('../src/core/capture.js');
+    assert.ok(!sanitizeFilename('.hidden').startsWith('.'));
+    assert.ok(sanitizeFilename('').length > 0);
   });
 });

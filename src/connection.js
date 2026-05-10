@@ -2,10 +2,14 @@ import CDP from 'chrome-remote-interface';
 
 let client = null;
 let targetInfo = null;
+let pendingConnect = null;
 const CDP_HOST = 'localhost';
 const CDP_PORT = 9222;
 const MAX_RETRIES = 5;
 const BASE_DELAY = 500;
+const CONNECT_TIMEOUT_MS = 5000;
+const EVAL_TIMEOUT_MS = 30000;
+const MAX_ERROR_DESC_LEN = 500;
 
 // Known direct API paths discovered via live probing (see PROBE_RESULTS.md)
 const KNOWN_PATHS = {
@@ -34,6 +38,9 @@ export { KNOWN_PATHS };
  * Prevents injection via quotes, backticks, template literals, or control chars.
  */
 export function safeString(str) {
+  if (str === null || str === undefined) {
+    throw new Error('safeString: value must not be null or undefined');
+  }
   return JSON.stringify(String(str));
 }
 
@@ -50,47 +57,73 @@ export function requireFinite(value, name) {
 export async function getClient() {
   if (client) {
     try {
-      // Quick liveness check
       await client.Runtime.evaluate({ expression: '1', returnByValue: true });
       return client;
     } catch {
+      const stale = client;
       client = null;
       targetInfo = null;
+      try { await stale.close(); } catch {}
     }
   }
   return connect();
 }
 
 export async function connect() {
-  let lastError;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const target = await findChartTarget();
-      if (!target) {
-        throw new Error('No TradingView chart target found. Is TradingView open with a chart?');
+  if (pendingConnect) return pendingConnect;
+  pendingConnect = (async () => {
+    let lastError;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const target = await findChartTarget();
+        if (!target) {
+          throw new Error('No TradingView chart target found. Is TradingView open with a chart?');
+        }
+        const newClient = await withTimeout(
+          CDP({ host: CDP_HOST, port: CDP_PORT, target: target.id }),
+          CONNECT_TIMEOUT_MS,
+          'CDP connect',
+        );
+        targetInfo = target;
+
+        if (client && client !== newClient) {
+          try { await client.close(); } catch {}
+        }
+        client = newClient;
+
+        await client.Runtime.enable();
+        await client.Page.enable();
+        await client.DOM.enable();
+
+        return client;
+      } catch (err) {
+        lastError = err;
+        const delay = Math.min(BASE_DELAY * Math.pow(2, attempt), 30000);
+        await new Promise(r => setTimeout(r, delay));
       }
-      targetInfo = target;
-      client = await CDP({ host: CDP_HOST, port: CDP_PORT, target: target.id });
-
-      // Enable required domains
-      await client.Runtime.enable();
-      await client.Page.enable();
-      await client.DOM.enable();
-
-      return client;
-    } catch (err) {
-      lastError = err;
-      const delay = Math.min(BASE_DELAY * Math.pow(2, attempt), 30000);
-      await new Promise(r => setTimeout(r, delay));
     }
+    throw new Error(`CDP connection failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
+  })();
+  try {
+    return await pendingConnect;
+  } finally {
+    pendingConnect = null;
   }
-  throw new Error(`CDP connection failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
+}
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function findChartTarget() {
-  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
+  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`, {
+    signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS),
+  });
   const targets = await resp.json();
-  // Prefer targets with tradingview.com/chart in the URL
   return targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
     || targets.find(t => t.type === 'page' && /tradingview/i.test(t.url))
     || null;
@@ -105,16 +138,23 @@ export async function getTargetInfo() {
 
 export async function evaluate(expression, opts = {}) {
   const c = await getClient();
-  const result = await c.Runtime.evaluate({
-    expression,
-    returnByValue: true,
-    awaitPromise: opts.awaitPromise ?? false,
-    ...opts,
-  });
+  const timeoutMs = opts.timeoutMs ?? EVAL_TIMEOUT_MS;
+  const { timeoutMs: _ignored, ...cdpOpts } = opts;
+  const result = await withTimeout(
+    c.Runtime.evaluate({
+      expression,
+      returnByValue: true,
+      awaitPromise: cdpOpts.awaitPromise ?? false,
+      ...cdpOpts,
+    }),
+    timeoutMs,
+    'Runtime.evaluate',
+  );
   if (result.exceptionDetails) {
-    const msg = result.exceptionDetails.exception?.description
+    const raw = result.exceptionDetails.exception?.description
       || result.exceptionDetails.text
       || 'Unknown evaluation error';
+    const msg = String(raw).slice(0, MAX_ERROR_DESC_LEN);
     throw new Error(`JS evaluation error: ${msg}`);
   }
   return result.result?.value;

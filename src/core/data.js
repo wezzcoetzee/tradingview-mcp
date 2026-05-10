@@ -8,7 +8,16 @@ const MAX_TRADES = 20;
 const CHART_API = KNOWN_PATHS.chartApi;
 const BARS_PATH = KNOWN_PATHS.mainSeriesBars;
 
+const ALLOWED_GRAPHICS_COLLECTIONS = new Set(['dwglines', 'dwglabels', 'dwgboxes', 'dwgtablecells']);
+const ALLOWED_GRAPHICS_MAP_KEYS = new Set(['lines', 'labels', 'boxes', 'tableCells']);
+
 function buildGraphicsJS(collectionName, mapKey, filter) {
+  if (!ALLOWED_GRAPHICS_COLLECTIONS.has(collectionName)) {
+    throw new Error(`buildGraphicsJS: unsupported collectionName "${collectionName}"`);
+  }
+  if (!ALLOWED_GRAPHICS_MAP_KEYS.has(mapKey)) {
+    throw new Error(`buildGraphicsJS: unsupported mapKey "${mapKey}"`);
+  }
   return `
     (function() {
       var chart = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget;
@@ -85,20 +94,23 @@ export async function getOhlcv({ count, summary } = {}) {
 
   if (summary) {
     const bars = data.bars;
-    const highs = bars.map(b => b.high);
-    const lows = bars.map(b => b.low);
-    const volumes = bars.map(b => b.volume);
+    let high = -Infinity, low = Infinity, volSum = 0;
+    for (const b of bars) {
+      if (b.high > high) high = b.high;
+      if (b.low < low) low = b.low;
+      volSum += b.volume;
+    }
     const first = bars[0];
     const last = bars[bars.length - 1];
     return {
       success: true, bar_count: bars.length,
       period: { from: first.time, to: last.time },
       open: first.open, close: last.close,
-      high: Math.max(...highs), low: Math.min(...lows),
-      range: Math.round((Math.max(...highs) - Math.min(...lows)) * 100) / 100,
+      high, low,
+      range: Math.round((high - low) * 100) / 100,
       change: Math.round((last.close - first.open) * 100) / 100,
       change_pct: Math.round(((last.close - first.open) / first.open) * 10000) / 100 + '%',
-      avg_volume: Math.round(volumes.reduce((a, b) => a + b, 0) / volumes.length),
+      avg_volume: Math.round(volSum / bars.length),
       last_5_bars: bars.slice(-5),
     };
   }
@@ -286,7 +298,7 @@ export async function getDepth() {
         || document.querySelector('[class*="DOM"]')
         || document.querySelector('[data-name="dom"]');
       if (!domPanel) return { found: false, error: 'DOM / Depth of Market panel not found.' };
-      var bids = [], asks = [];
+      var bids = [], asks = [], unclassified = [];
       var rows = domPanel.querySelectorAll('[class*="row"], tr');
       for (var i = 0; i < rows.length; i++) {
         var row = rows[i];
@@ -300,8 +312,10 @@ export async function getDepth() {
         var rowHTML = row.innerHTML || '';
         if (/bid|buy/i.test(rowClass) || /bid|buy/i.test(rowHTML)) bids.push({ price, size });
         else if (/ask|sell/i.test(rowClass) || /ask|sell/i.test(rowHTML)) asks.push({ price, size });
-        else if (i < rows.length / 2) asks.push({ price, size });
-        else bids.push({ price, size });
+        else unclassified.push({ price, size });
+      }
+      if (unclassified.length > 0 && bids.length === 0 && asks.length === 0) {
+        return { found: true, raw_values: unclassified, warning: 'could not classify bid/ask sides — no class/HTML markers matched' };
       }
       if (bids.length === 0 && asks.length === 0) {
         var cells = domPanel.querySelectorAll('[class*="cell"], td');

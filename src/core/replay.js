@@ -1,7 +1,7 @@
 /**
  * Core replay mode logic.
  */
-import { evaluate as _evaluate, getReplayApi as _getReplayApi } from '../connection.js';
+import { evaluate as _evaluate, getReplayApi as _getReplayApi, requireFinite } from '../connection.js';
 
 export const VALID_AUTOPLAY_DELAYS = [100, 143, 200, 300, 1000, 2000, 3000, 5000, 10000];
 
@@ -29,8 +29,9 @@ export async function start({ date, _deps } = {}) {
   // page context, otherwise the promise is fire-and-forget and replay state says
   // "started" but stepping doesn't work (issue #26).
   if (date) {
-    const ts = new Date(date).getTime();
-    if (isNaN(ts)) throw new Error(`Invalid date: "${date}". Use YYYY-MM-DD format.`);
+    const parsed = new Date(date).getTime();
+    if (isNaN(parsed)) throw new Error(`Invalid date: "${date}". Use YYYY-MM-DD format.`);
+    const ts = requireFinite(parsed, 'replay date timestamp');
     await evaluate(`${rp}.selectDate(${ts}).then(function() { return 'ok'; })`);
   } else {
     await evaluate(`${rp}.selectFirstAvailableDate()`);
@@ -75,15 +76,15 @@ export async function step({ _deps } = {}) {
 }
 
 export async function autoplay({ speed, _deps } = {}) {
-  // Validate BEFORE any CDP calls — invalid values corrupt cloud account state permanently
-  if (speed > 0 && !VALID_AUTOPLAY_DELAYS.includes(speed))
-    throw new Error(`Invalid autoplay delay ${speed}ms. Valid values: ${VALID_AUTOPLAY_DELAYS.join(', ')}`);
+  if (speed !== undefined && !(Number.isInteger(speed) && VALID_AUTOPLAY_DELAYS.includes(speed))) {
+    throw new Error(`Invalid autoplay delay ${speed}. Valid values: ${VALID_AUTOPLAY_DELAYS.join(', ')}`);
+  }
 
   const { evaluate, getReplayApi } = _resolve(_deps);
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
   if (!started) throw new Error('Replay is not started. Use replay_start first.');
-  if (speed > 0) {
+  if (speed !== undefined) {
     await evaluate(`${rp}.changeAutoplayDelay(${speed})`);
   }
   await evaluate(`${rp}.toggleAutoplay()`);
