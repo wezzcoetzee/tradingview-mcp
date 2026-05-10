@@ -19,8 +19,8 @@ async function pollLoop(fetcher, { interval = 500, dedupe = true, label = 'strea
   const controller = new AbortController();
   const cleanup = () => controller.abort();
 
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
+  process.once('SIGINT', cleanup);
+  process.once('SIGTERM', cleanup);
   if (signal) signal.addEventListener('abort', cleanup, { once: true });
 
   const start = Date.now();
@@ -60,8 +60,8 @@ async function pollLoop(fetcher, { interval = 500, dedupe = true, label = 'strea
       await sleep(interval, controller.signal);
     }
   } finally {
-    process.removeListener('SIGINT', cleanup);
-    process.removeListener('SIGTERM', cleanup);
+    process.off('SIGINT', cleanup);
+    process.off('SIGTERM', cleanup);
     process.stderr.write(`[stream:${label}] stopped after ${((Date.now() - start) / 1000).toFixed(1)}s\n`);
   }
 }

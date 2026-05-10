@@ -70,7 +70,7 @@ function buildGraphicsJS(collectionName, mapKey, filter) {
 }
 
 export async function getOhlcv({ count, summary } = {}) {
-  const limit = Math.min(count || 100, MAX_OHLCV_BARS);
+  const limit = Math.min(count ?? 100, MAX_OHLCV_BARS);
   let data;
   try {
     data = await evaluate(`
@@ -110,7 +110,9 @@ export async function getOhlcv({ count, summary } = {}) {
       high, low,
       range: Math.round((high - low) * 100) / 100,
       change: Math.round((last.close - first.open) * 100) / 100,
-      change_pct: Math.round(((last.close - first.open) / first.open) * 10000) / 100 + '%',
+      change_pct: first.open !== 0
+        ? Math.round(((last.close - first.open) / first.open) * 10000) / 100 + '%'
+        : null,
       avg_volume: Math.round(volSum / bars.length),
       last_5_bars: bars.slice(-5),
     };
@@ -178,7 +180,7 @@ export async function getStrategyResults() {
 }
 
 export async function getTrades({ max_trades } = {}) {
-  const limit = Math.min(max_trades || 20, MAX_TRADES);
+  const limit = Math.min(max_trades ?? 20, MAX_TRADES);
   const trades = await evaluate(`
     (function() {
       try {
@@ -401,7 +403,7 @@ export async function getPineLabels({ study_filter, max_labels, verbose } = {}) 
   const raw = await evaluate(buildGraphicsJS('dwglabels', 'labels', filter));
   if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
 
-  const limit = max_labels || 50;
+  const limit = max_labels ?? 50;
   const studies = raw.map(s => {
     let labels = s.items.map(item => {
       const v = item.raw;
