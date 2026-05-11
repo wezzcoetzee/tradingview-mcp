@@ -15,7 +15,7 @@ export function sanitizeFilename(name) {
   return s;
 }
 
-export async function captureScreenshot({ region, filename, method } = {}) {
+export async function captureScreenshot({ region, filename, method }: any = {}) {
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
@@ -63,7 +63,7 @@ export async function captureScreenshot({ region, filename, method } = {}) {
     if (bounds) clip = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, scale: 1 };
   }
 
-  const params = { format: 'png' };
+  const params: any = { format: 'png' };
   if (clip) params.clip = clip;
 
   const { data } = await client.Page.captureScreenshot(params);

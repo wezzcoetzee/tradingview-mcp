@@ -14,7 +14,7 @@ const MODEL = `${CHART_API}._chartWidget.model()`;
  */
 const MAX_CONSECUTIVE_CDP_ERRORS = 10;
 
-async function pollLoop(fetcher, { interval = 500, dedupe = true, label = 'stream', signal } = {}) {
+async function pollLoop(fetcher, { interval = 500, dedupe = true, label = 'stream', signal }: any = {}) {
   let lastHash = null;
   const controller = new AbortController();
   const cleanup = () => controller.abort();
@@ -70,7 +70,7 @@ function sleep(ms, signal) {
   return new Promise((resolve) => {
     const t = setTimeout(resolve, ms);
     if (signal) {
-      signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+      signal.addEventListener('abort', () => { clearTimeout(t); (resolve as any)(); }, { once: true });
     }
   });
 }
@@ -99,7 +99,7 @@ async function fetchQuote() {
   `);
 }
 
-export async function streamQuote({ interval } = {}) {
+export async function streamQuote({ interval }: any = {}) {
   return pollLoop(fetchQuote, { interval: interval || 300, label: 'quote' });
 }
 
@@ -129,7 +129,7 @@ async function fetchLastBar() {
   `);
 }
 
-export async function streamBars({ interval } = {}) {
+export async function streamBars({ interval }: any = {}) {
   return pollLoop(fetchLastBar, { interval: interval || 500, label: 'bars' });
 }
 
@@ -163,7 +163,7 @@ async function fetchValues() {
   `);
 }
 
-export async function streamValues({ interval } = {}) {
+export async function streamValues({ interval }: any = {}) {
   return pollLoop(fetchValues, { interval: interval || 500, label: 'values' });
 }
 
@@ -209,7 +209,7 @@ async function fetchLines(studyFilter) {
   `);
 }
 
-export async function streamLines({ interval, filter } = {}) {
+export async function streamLines({ interval, filter }: any = {}) {
   return pollLoop(() => fetchLines(filter), { interval: interval || 1000, label: 'lines' });
 }
 
@@ -252,7 +252,7 @@ async function fetchLabels(studyFilter) {
   `);
 }
 
-export async function streamLabels({ interval, filter } = {}) {
+export async function streamLabels({ interval, filter }: any = {}) {
   return pollLoop(() => fetchLabels(filter), { interval: interval || 1000, label: 'labels' });
 }
 
@@ -302,7 +302,7 @@ async function fetchTables(studyFilter) {
   `);
 }
 
-export async function streamTables({ interval, filter } = {}) {
+export async function streamTables({ interval, filter }: any = {}) {
   return pollLoop(() => fetchTables(filter), { interval: interval || 2000, label: 'tables' });
 }
 
@@ -348,6 +348,6 @@ async function fetchAllPanes() {
   `);
 }
 
-export async function streamAllPanes({ interval } = {}) {
+export async function streamAllPanes({ interval }: any = {}) {
   return pollLoop(fetchAllPanes, { interval: interval || 500, label: 'all-panes' });
 }

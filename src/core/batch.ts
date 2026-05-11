@@ -11,7 +11,7 @@ import { sanitizeFilename } from './capture.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = join(dirname(dirname(__dirname)), 'screenshots');
 
-export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_count }) {
+export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_count }: any = {}) {
   const tfs = timeframes && timeframes.length > 0 ? timeframes : [null];
   const delay = delay_ms || 2000;
   const results = [];

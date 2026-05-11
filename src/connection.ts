@@ -138,7 +138,7 @@ export async function getTargetInfo() {
   return targetInfo;
 }
 
-export async function evaluate(expression, opts = {}) {
+export async function evaluate(expression, opts: any = {}) {
   const c = await getClient();
   const timeoutMs = opts.timeoutMs ?? EVAL_TIMEOUT_MS;
   const { timeoutMs: _ignored, ...cdpOpts } = opts;

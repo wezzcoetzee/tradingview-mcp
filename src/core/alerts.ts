@@ -3,7 +3,7 @@
  */
 import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
 
-export async function create({ condition, price, message }) {
+export async function create({ condition, price, message }: any = {}) {
   const opened = await evaluate(`
     (function() {
       var btn = document.querySelector('[aria-label="Create Alert"]')
@@ -103,7 +103,7 @@ export async function list() {
   return { success: true, alert_count: result?.alerts?.length || 0, source: 'internal_api', alerts: result?.alerts || [], error: result?.error };
 }
 
-export async function deleteAlerts({ delete_all }) {
+export async function deleteAlerts({ delete_all }: any = {}) {
   if (delete_all) {
     const result = await evaluate(`
       (function() {

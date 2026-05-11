@@ -3,7 +3,7 @@ import * as core from '../../core/tab.js';
 
 register('tab', {
   description: 'Tab management (list, new, close, switch)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['list', {
       description: 'List all open chart tabs',
       handler: () => core.list(),

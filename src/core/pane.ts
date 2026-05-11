@@ -79,7 +79,7 @@ export async function list() {
  * Set the chart layout grid.
  * @param {string} layout - Layout code: s, 2h, 2v, 2-1, 1-2, 3h, 3v, 4, 6, 8, etc.
  */
-export async function setLayout({ layout }) {
+export async function setLayout({ layout }: any = {}) {
   const code = layout.toLowerCase().replace(/\s+/g, '');
 
   // Map friendly names to codes
@@ -112,7 +112,7 @@ export async function setLayout({ layout }) {
 /**
  * Focus a specific pane by index.
  */
-export async function focus({ index }) {
+export async function focus({ index }: any = {}) {
   const idx = Number(index);
   if (!Number.isInteger(idx) || idx < 0) {
     throw new Error(`Pane index must be a non-negative integer (got ${JSON.stringify(index)})`);
@@ -137,7 +137,7 @@ export async function focus({ index }) {
  * Set the symbol on a specific pane by index.
  * Works by focusing the pane, then using the active chart's setSymbol.
  */
-export async function setSymbol({ index, symbol }) {
+export async function setSymbol({ index, symbol }: any = {}) {
   const idx = Number(index);
   if (!Number.isInteger(idx) || idx < 0) {
     throw new Error(`Pane index must be a non-negative integer (got ${JSON.stringify(index)})`);

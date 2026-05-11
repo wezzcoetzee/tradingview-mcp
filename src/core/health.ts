@@ -82,7 +82,7 @@ export async function discover() {
     })()
   `);
 
-  const available = Object.values(paths).filter(v => v.available).length;
+  const available = Object.values(paths).filter((v: any) => v.available).length;
   const total = Object.keys(paths).length;
 
   return { success: true, apis_available: available, apis_total: total, apis: paths };
@@ -159,7 +159,7 @@ export async function uiState() {
   return { success: true, ...state };
 }
 
-export async function launch({ port, kill_existing } = {}) {
+export async function launch({ port, kill_existing }: any = {}) {
   const cdpPort = port || 9222;
   const killFirst = kill_existing === true;
   const platform = process.platform;
@@ -241,7 +241,7 @@ export async function launch({ port, kill_existing } = {}) {
         }).on('error', () => resolve(null));
       });
       if (ready) {
-        const info = JSON.parse(ready);
+        const info = JSON.parse(ready as string);
         return {
           success: true, platform, binary: tvPath, pid: child.pid,
           cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,

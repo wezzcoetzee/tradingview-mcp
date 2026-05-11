@@ -193,7 +193,7 @@ describe('chart.js — sanitized evaluate calls', () => {
       if (expr.includes('getAllStudies')) return ['id1'];
       return undefined;
     };
-    _deps.evaluate = evalFn;
+    _deps.evaluate = evalFn as any;
     await manageIndicator({ action: 'add', indicator: "Relative Strength Index", _deps });
     const createCall = evaluate.calls.find(c => c.includes('createStudy'));
     assert.ok(createCall, 'createStudy called');

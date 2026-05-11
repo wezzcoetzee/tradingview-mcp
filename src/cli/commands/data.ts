@@ -25,7 +25,7 @@ register('values', {
 
 register('data', {
   description: 'Advanced data tools (lines, labels, tables, boxes, strategy, trades, equity, depth)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['lines', {
       description: 'Get Pine Script line.new() price levels',
       options: {

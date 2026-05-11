@@ -3,7 +3,7 @@ import * as core from '../../core/pane.js';
 
 register('pane', {
   description: 'Chart pane/layout tools (list, layout, focus, symbol)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['list', {
       description: 'List all panes in the current layout',
       handler: () => core.list(),

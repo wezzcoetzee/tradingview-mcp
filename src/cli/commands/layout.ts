@@ -3,7 +3,7 @@ import * as core from '../../core/ui.js';
 
 register('layout', {
   description: 'Layout tools (list, switch)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['list', {
       description: 'List saved chart layouts',
       handler: () => core.layoutList(),

@@ -86,7 +86,7 @@ export function buildGraphicsJS(collectionName, mapKey, filter) {
   `;
 }
 
-export async function getOhlcv({ count, summary } = {}) {
+export async function getOhlcv({ count, summary }: any = {}) {
   const limit = Math.min(count ?? 100, MAX_OHLCV_BARS);
   let data;
   try {
@@ -173,7 +173,7 @@ function resolveStudyInputs(study) {
 }
 `;
 
-export async function getIndicator({ entity_id, _deps }) {
+export async function getIndicator({ entity_id, _deps }: any = {}) {
   const ev = _deps?.evaluate || evaluate;
   const data = await ev(`
     (function() {
@@ -230,7 +230,7 @@ export async function getStrategyResults() {
   return { success: true, metric_count: Object.keys(results?.metrics || {}).length, source: results?.source, metrics: results?.metrics || {}, error: results?.error };
 }
 
-export async function getTrades({ max_trades } = {}) {
+export async function getTrades({ max_trades }: any = {}) {
   const limit = Math.min(max_trades ?? 20, MAX_TRADES);
   const trades = await evaluate(`
     (function() {
@@ -302,7 +302,7 @@ export async function getEquity() {
   return { success: true, data_points: equity?.data?.length || 0, source: equity?.source, data: equity?.data || [], equity_summary: equity?.equity_summary, note: equity?.note, error: equity?.error };
 }
 
-export async function getQuote({ symbol } = {}) {
+export async function getQuote({ symbol }: any = {}) {
   const data = await evaluate(`
     (function() {
       var api = ${CHART_API};
@@ -433,7 +433,7 @@ export async function getStudyValues() {
   return { success: true, study_count: data?.length || 0, studies: data || [] };
 }
 
-export async function getPineLines({ study_filter, verbose } = {}) {
+export async function getPineLines({ study_filter, verbose }: any = {}) {
   const filter = study_filter || '';
   const raw = await evaluate(buildGraphicsJS('dwglines', 'lines', filter));
   if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
@@ -450,14 +450,14 @@ export async function getPineLines({ study_filter, verbose } = {}) {
       if (y1 != null && v.y1 === v.y2 && !seen[y1]) { hLevels.push(y1); seen[y1] = true; }
     }
     hLevels.sort((a, b) => b - a);
-    const result = { name: s.name, total_lines: s.count, horizontal_levels: hLevels };
+    const result: any = { name: s.name, total_lines: s.count, horizontal_levels: hLevels };
     if (verbose) result.all_lines = allLines;
     return result;
   });
   return { success: true, study_count: studies.length, studies };
 }
 
-export async function getPineLabels({ study_filter, max_labels, verbose } = {}) {
+export async function getPineLabels({ study_filter, max_labels, verbose }: any = {}) {
   const filter = study_filter || '';
   const raw = await evaluate(buildGraphicsJS('dwglabels', 'labels', filter));
   if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
@@ -477,7 +477,7 @@ export async function getPineLabels({ study_filter, max_labels, verbose } = {}) 
   return { success: true, study_count: studies.length, studies };
 }
 
-export async function getPineTables({ study_filter } = {}) {
+export async function getPineTables({ study_filter }: any = {}) {
   const filter = study_filter || '';
   const raw = await evaluate(buildGraphicsJS('dwgtablecells', 'tableCells', filter));
   if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
@@ -505,7 +505,7 @@ export async function getPineTables({ study_filter } = {}) {
   return { success: true, study_count: studies.length, studies };
 }
 
-export async function getPineBoxes({ study_filter, verbose } = {}) {
+export async function getPineBoxes({ study_filter, verbose }: any = {}) {
   const filter = study_filter || '';
   const raw = await evaluate(buildGraphicsJS('dwgboxes', 'boxes', filter));
   if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
@@ -522,7 +522,7 @@ export async function getPineBoxes({ study_filter, verbose } = {}) {
       if (high != null && low != null) { const key = high + ':' + low; if (!seen[key]) { zones.push({ high, low }); seen[key] = true; } }
     }
     zones.sort((a, b) => b.high - a.high);
-    const result = { name: s.name, total_boxes: s.count, zones };
+    const result: any = { name: s.name, total_boxes: s.count, zones };
     if (verbose) result.all_boxes = allBoxes;
     return result;
   });

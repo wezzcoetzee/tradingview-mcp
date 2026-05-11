@@ -3,7 +3,7 @@ import * as core from '../../core/replay.js';
 
 register('replay', {
   description: 'Replay mode controls',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['start', {
       description: 'Start replay mode',
       options: {

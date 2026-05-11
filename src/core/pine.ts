@@ -75,7 +75,7 @@ export async function ensurePineEditorOpen() {
 
 // ── Pure / offline functions ──
 
-export function analyze({ source }) {
+export function analyze({ source }: any = {}) {
   const lines = source.split('\n');
   const diagnostics = [];
 
@@ -183,7 +183,7 @@ export function analyze({ source }) {
   };
 }
 
-export async function check({ source }) {
+export async function check({ source }: any = {}) {
   const formData = new URLSearchParams();
   formData.append('source', source);
 
@@ -263,7 +263,7 @@ export async function getSource() {
   return { success: true, source, line_count: source.split('\n').length, char_count: source.length };
 }
 
-export async function setSource({ source }) {
+export async function setSource({ source }: any = {}) {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
@@ -505,7 +505,7 @@ export async function smartCompile() {
   };
 }
 
-export async function newScript({ type }) {
+export async function newScript({ type }: any = {}) {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
@@ -534,7 +534,7 @@ export async function newScript({ type }) {
   return { success: true, type, action: 'new_script_created', template: typeMap[type] };
 }
 
-export async function openScript({ name }) {
+export async function openScript({ name }: any = {}) {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 

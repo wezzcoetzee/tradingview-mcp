@@ -3,7 +3,7 @@ import * as core from '../../core/alerts.js';
 
 register('alert', {
   description: 'Alert tools (list, create, delete)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['list', {
       description: 'List active alerts',
       handler: () => core.list(),

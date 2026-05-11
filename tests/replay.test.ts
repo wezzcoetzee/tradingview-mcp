@@ -15,7 +15,7 @@ import { start, step, autoplay, stop, trade, status, VALID_AUTOPLAY_DELAYS } fro
  * @param {object} responses — map of substring→return value. First matching key wins.
  * @param {Array} [sequence] — if provided, override responses with sequential returns
  */
-function mockEvaluate(responses = {}, sequence) {
+function mockEvaluate(responses: any = {}, sequence?: any) {
   let callIdx = 0;
   const calls = [];
   const fn = async (expr) => {
@@ -34,7 +34,7 @@ function mockGetReplayApi() {
   return async () => 'window.__rp';
 }
 
-function mockDeps(responses = {}, sequence) {
+function mockDeps(responses: any = {}, sequence?: any) {
   const evaluate = mockEvaluate(responses, sequence);
   return { _deps: { evaluate, getReplayApi: mockGetReplayApi() }, evaluate };
 }
@@ -81,8 +81,8 @@ describe('start() — date selection and polling', () => {
     await assert.rejects(
       () => start({ date: 'not-a-date', _deps }),
       (err) => {
-        assert.ok(err.message.includes('Invalid date'));
-        assert.ok(err.message.includes('not-a-date'));
+        assert.ok((err as any).message.includes('Invalid date'));
+        assert.ok((err as any).message.includes('not-a-date'));
         return true;
       },
     );
@@ -92,7 +92,7 @@ describe('start() — date selection and polling', () => {
     const { _deps } = mockDeps({ 'isReplayAvailable': false });
     await assert.rejects(
       () => start({ date: '2026-01-01', _deps }),
-      (err) => err.message.includes('not available'),
+      (err: any) => err.message.includes('not available'),
     );
   });
 
@@ -131,7 +131,7 @@ describe('start() — date selection and polling', () => {
     await assert.rejects(
       () => start({ date: '2026-01-01', _deps: { evaluate, getReplayApi: mockGetReplayApi() } }),
       (err) => {
-        assert.ok(err.message.includes('Replay failed to start'));
+        assert.ok((err as any).message.includes('Replay failed to start'));
         return true;
       },
     );
@@ -179,7 +179,7 @@ describe('step() — doStep and polling', () => {
     const { _deps } = mockDeps({ 'isReplayStarted': false });
     await assert.rejects(
       () => step({ _deps }),
-      (err) => err.message.includes('not started'),
+      (err: any) => err.message.includes('not started'),
     );
   });
 });
@@ -209,8 +209,8 @@ describe('autoplay() — delay validation', () => {
       await assert.rejects(
         () => autoplay({ speed: delay, _deps }),
         (err) => {
-          assert.ok(err.message.includes('Invalid autoplay delay'));
-          assert.ok(err.message.includes(String(delay)));
+          assert.ok((err as any).message.includes('Invalid autoplay delay'));
+          assert.ok((err as any).message.includes(String(delay)));
           return true;
         },
       );
@@ -249,7 +249,7 @@ describe('autoplay() — delay validation', () => {
     const { _deps } = mockDeps({ 'isReplayStarted': false });
     await assert.rejects(
       () => autoplay({ speed: 1000, _deps }),
-      (err) => err.message.includes('not started'),
+      (err: any) => err.message.includes('not started'),
     );
   });
 });
@@ -305,7 +305,7 @@ describe('trade()', () => {
     const { _deps } = mockDeps({ 'isReplayStarted': true });
     await assert.rejects(
       () => trade({ action: 'hold', _deps }),
-      (err) => err.message.includes('Invalid action'),
+      (err: any) => err.message.includes('Invalid action'),
     );
   });
 
@@ -313,7 +313,7 @@ describe('trade()', () => {
     const { _deps } = mockDeps({ 'isReplayStarted': false });
     await assert.rejects(
       () => trade({ action: 'buy', _deps }),
-      (err) => err.message.includes('not started'),
+      (err: any) => err.message.includes('not started'),
     );
   });
 });

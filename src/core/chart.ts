@@ -14,7 +14,7 @@ function _resolve(deps) {
   };
 }
 
-export async function getState({ _deps } = {}) {
+export async function getState({ _deps }: any = {}) {
   const { evaluate } = _resolve(_deps);
   const state = await evaluate(`
     (function() {
@@ -37,7 +37,7 @@ export async function getState({ _deps } = {}) {
   return { success: true, ...state };
 }
 
-export async function setSymbol({ symbol, _deps }) {
+export async function setSymbol({ symbol, _deps }: any = {}) {
   const { evaluateAsync, waitForChartReady } = _resolve(_deps);
   await evaluateAsync(`
     (function() {
@@ -52,7 +52,7 @@ export async function setSymbol({ symbol, _deps }) {
   return { success: true, symbol, chart_ready: ready };
 }
 
-export async function setTimeframe({ timeframe, _deps }) {
+export async function setTimeframe({ timeframe, _deps }: any = {}) {
   const { evaluate, waitForChartReady } = _resolve(_deps);
   await evaluate(`
     (function() {
@@ -64,7 +64,7 @@ export async function setTimeframe({ timeframe, _deps }) {
   return { success: true, timeframe, chart_ready: ready };
 }
 
-export async function setType({ chart_type, _deps }) {
+export async function setType({ chart_type, _deps }: any = {}) {
   const { evaluate } = _resolve(_deps);
   const typeMap = {
     'Bars': 0, 'Candles': 1, 'Line': 2, 'Area': 3,
@@ -84,7 +84,7 @@ export async function setType({ chart_type, _deps }) {
   return { success: true, chart_type, type_num: typeNum };
 }
 
-export async function manageIndicator({ action, indicator, entity_id, inputs: inputsRaw, _deps }) {
+export async function manageIndicator({ action, indicator, entity_id, inputs: inputsRaw, _deps }: any = {}) {
   const { evaluate } = _resolve(_deps);
   const inputs = inputsRaw ? (typeof inputsRaw === 'string' ? JSON.parse(inputsRaw) : inputsRaw) : undefined;
 
@@ -129,7 +129,7 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
 }
 
 export async function getVisibleRange() {
-  const result = await evaluate(`
+  const result = await _evaluate(`
     (function() {
       var chart = ${CHART_API};
       return { visible_range: chart.getVisibleRange(), bars_range: chart.getVisibleBarsRange() };
@@ -138,7 +138,7 @@ export async function getVisibleRange() {
   return { success: true, visible_range: result.visible_range, bars_range: result.bars_range };
 }
 
-export async function setVisibleRange({ from, to, _deps }) {
+export async function setVisibleRange({ from, to, _deps }: any = {}) {
   const { evaluate } = _resolve(_deps);
   const f = requireFinite(from, 'from');
   const t = requireFinite(to, 'to');
@@ -170,13 +170,13 @@ export async function setVisibleRange({ from, to, _deps }) {
   return { success: true, requested: { from, to }, actual: actual || { from: 0, to: 0 } };
 }
 
-export async function scrollToDate({ date }) {
+export async function scrollToDate({ date }: any = {}) {
   let timestamp;
   if (/^\d+$/.test(date)) timestamp = Number(date);
   else timestamp = Math.floor(new Date(date).getTime() / 1000);
   if (isNaN(timestamp)) throw new Error(`Could not parse date: ${date}. Use ISO format (2024-01-15) or unix timestamp.`);
 
-  const resolution = await evaluate(`${CHART_API}.resolution()`);
+  const resolution = await _evaluate(`${CHART_API}.resolution()`);
   let secsPerBar = 60;
   const res = String(resolution);
   if (res === 'D' || res === '1D') secsPerBar = 86400;
@@ -190,7 +190,7 @@ export async function scrollToDate({ date }) {
   const from = requireFinite(timestamp - halfWindow, 'from');
   const to = requireFinite(timestamp + halfWindow, 'to');
 
-  await evaluate(`
+  await _evaluate(`
     (function() {
       var chart = ${CHART_API};
       var m = chart._chartWidget.model();
@@ -212,7 +212,7 @@ export async function scrollToDate({ date }) {
 }
 
 export async function symbolInfo() {
-  const result = await evaluate(`
+  const result = await _evaluate(`
     (function() {
       var chart = ${CHART_API};
       var info = chart.symbolExt();
@@ -226,7 +226,7 @@ export async function symbolInfo() {
   return { success: true, ...result };
 }
 
-export async function symbolSearch({ query, type }) {
+export async function symbolSearch({ query, type }: any = {}) {
   // Use TradingView's public symbol search REST API (works without auth)
   const params = new URLSearchParams({
     text: query,

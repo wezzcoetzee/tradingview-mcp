@@ -3,7 +3,7 @@ import * as core from '../../core/drawing.js';
 
 register('draw', {
   description: 'Drawing tools (shape, list, get, remove, clear)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['shape', {
       description: 'Draw a shape on the chart',
       options: {

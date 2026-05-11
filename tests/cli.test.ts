@@ -15,11 +15,11 @@ import { writeFileSync, unlinkSync } from 'fs';
 function require_fs() { return { writeFileSync, unlinkSync }; }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CLI = join(__dirname, '..', 'src', 'cli', 'index.js');
+const CLI = join(__dirname, '..', 'src', 'cli', 'index.ts');
 
 function run(args, opts = {}) {
   try {
-    const stdout = execFileSync('node', [CLI, ...args], {
+    const stdout = execFileSync('npx', ['tsx', CLI, ...args], {
       encoding: 'utf-8',
       timeout: 15000,
       ...opts,

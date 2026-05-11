@@ -5,7 +5,7 @@ import * as dataCore from '../../core/data.js';
 
 register('indicator', {
   description: 'Indicator tools (add, remove, toggle, set, get)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['add', {
       description: 'Add an indicator to the chart',
       options: {

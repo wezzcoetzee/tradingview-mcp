@@ -9,7 +9,7 @@ function _resolve(deps) {
   return { evaluate: deps?.evaluate || _evaluate };
 }
 
-export async function setInputs({ entity_id, inputs: inputsRaw, _deps }) {
+export async function setInputs({ entity_id, inputs: inputsRaw, _deps }: any = {}) {
   const { evaluate } = _resolve(_deps);
   const inputs = inputsRaw ? (typeof inputsRaw === 'string' ? JSON.parse(inputsRaw) : inputsRaw) : undefined;
   if (!entity_id) throw new Error('entity_id is required. Use chart_get_state to find study IDs.');
@@ -71,10 +71,11 @@ export async function setInputs({ entity_id, inputs: inputsRaw, _deps }) {
   };
 }
 
-export async function toggleVisibility({ entity_id, visible }) {
+export async function toggleVisibility({ entity_id, visible, _deps }: any = {}) {
   if (!entity_id) throw new Error('entity_id is required. Use chart_get_state to find study IDs.');
   if (typeof visible !== 'boolean') throw new Error('visible must be a boolean (true or false)');
 
+  const { evaluate } = _resolve(_deps);
   const result = await evaluate(`
     (function() {
       var chart = ${CHART_API};

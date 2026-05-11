@@ -3,7 +3,7 @@
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
 
-export async function click({ by, value }) {
+export async function click({ by, value }: any = {}) {
   const escaped = JSON.stringify(value);
   const result = await evaluate(`
     (function() {
@@ -29,7 +29,7 @@ export async function click({ by, value }) {
   return { success: true, clicked: result };
 }
 
-export async function openPanel({ panel, action }) {
+export async function openPanel({ panel, action }: any = {}) {
   const isBottomPanel = panel === 'pine-editor' || panel === 'strategy-tester';
   if (isBottomPanel) {
     const widgetName = panel === 'pine-editor' ? 'pine-editor' : 'backtesting';
@@ -118,7 +118,7 @@ export async function layoutList() {
   return { success: true, layout_count: layouts?.layouts?.length || 0, source: layouts?.source, layouts: layouts?.layouts || [], error: layouts?.error };
 }
 
-export async function layoutSwitch({ name }) {
+export async function layoutSwitch({ name }: any = {}) {
   const escaped = JSON.stringify(name);
   const result = await evaluateAsync(`
     new Promise(function(resolve) {
@@ -161,7 +161,7 @@ export async function layoutSwitch({ name }) {
   return { success: true, layout: result.name || name, layout_id: result.id, source: result.source, action: 'switched', unsaved_dialog_dismissed: dismissed };
 }
 
-export async function keyboard({ key, modifiers }) {
+export async function keyboard({ key, modifiers }: any = {}) {
   const c = await getClient();
   let mod = 0;
   if (modifiers) {
@@ -185,13 +185,13 @@ export async function keyboard({ key, modifiers }) {
   return { success: true, key, modifiers: modifiers || [] };
 }
 
-export async function typeText({ text }) {
+export async function typeText({ text }: any = {}) {
   const c = await getClient();
   await c.Input.insertText({ text });
   return { success: true, typed: text.substring(0, 100), length: text.length };
 }
 
-export async function hover({ by, value }) {
+export async function hover({ by, value }: any = {}) {
   const coords = await evaluate(`
     (function() {
       var by = ${JSON.stringify(by)};
@@ -218,7 +218,7 @@ export async function hover({ by, value }) {
   return { success: true, hovered: { by, value, tag: coords.tag, x: coords.x, y: coords.y } };
 }
 
-export async function scroll({ direction, amount }) {
+export async function scroll({ direction, amount }: any = {}) {
   const c = await getClient();
   const px = amount || 300;
   const center = await evaluate(`
@@ -236,7 +236,7 @@ export async function scroll({ direction, amount }) {
   return { success: true, direction, amount: px };
 }
 
-export async function mouseClick({ x, y, button, double_click }) {
+export async function mouseClick({ x, y, button, double_click }: any = {}) {
   const c = await getClient();
   const btn = button === 'right' ? 'right' : button === 'middle' ? 'middle' : 'left';
   const btnNum = btn === 'right' ? 2 : btn === 'middle' ? 1 : 0;
@@ -251,7 +251,7 @@ export async function mouseClick({ x, y, button, double_click }) {
   return { success: true, x, y, button: btn, double_click: !!double_click };
 }
 
-export async function findElement({ query, strategy }) {
+export async function findElement({ query, strategy }: any = {}) {
   const strat = strategy || 'text';
   const results = await evaluate(`
     (function() {
@@ -292,7 +292,7 @@ export async function findElement({ query, strategy }) {
 
 const MAX_EVAL_EXPR_LEN = 2000;
 
-export async function uiEvaluate({ expression }) {
+export async function uiEvaluate({ expression }: any = {}) {
   if (process.env.TRADINGVIEW_MCP_ALLOW_EVAL !== '1') {
     throw new Error(
       'ui_evaluate is disabled. This tool runs arbitrary JS inside your logged-in '

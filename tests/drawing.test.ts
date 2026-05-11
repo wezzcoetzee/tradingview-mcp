@@ -16,7 +16,7 @@ import {
   clearAll,
 } from '../src/core/drawing.js';
 
-function makeDeps(evalImpl) {
+function makeDeps(evalImpl?: any) {
   const calls = [];
   const evaluate = async (expr) => {
     calls.push(expr);

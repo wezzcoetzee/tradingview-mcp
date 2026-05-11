@@ -62,7 +62,7 @@ export async function get() {
   };
 }
 
-export async function add({ symbol }) {
+export async function add({ symbol }: any = {}) {
   // Use keyboard shortcut to open symbol search in watchlist, type symbol, press Enter
   const c = await getClient();
 

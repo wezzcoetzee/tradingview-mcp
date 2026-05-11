@@ -11,7 +11,7 @@ async function readStdin() {
 
 register('pine', {
   description: 'Pine Script tools',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['get', {
       description: 'Get current Pine Script source from editor',
       handler: () => core.getSource(),

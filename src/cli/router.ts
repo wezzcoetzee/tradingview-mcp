@@ -43,7 +43,7 @@ function printCommandHelp(name, cmd) {
   const opts = cmd.options || {};
   if (Object.keys(opts).length > 0) {
     console.log('\nOptions:');
-    for (const [k, v] of Object.entries(opts)) {
+    for (const [k, v] of Object.entries(opts) as [string, any][]) {
       const flag = v.short ? `-${v.short}, --${k}` : `    --${k}`;
       console.log(`  ${flag.padEnd(20)}${v.description || ''}`);
     }
@@ -96,7 +96,7 @@ export async function run(argv) {
         console.log(sub.description);
         if (Object.keys(options).length > 0) {
           console.log('\nOptions:');
-          for (const [k, v] of Object.entries(options)) {
+          for (const [k, v] of Object.entries(options) as [string, any][]) {
             const flag = v.short ? `-${v.short}, --${k}` : `    --${k}`;
             console.log(`  ${flag.padEnd(20)}${v.description || ''}`);
           }

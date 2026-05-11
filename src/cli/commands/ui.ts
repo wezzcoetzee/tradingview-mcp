@@ -3,7 +3,7 @@ import * as core from '../../core/ui.js';
 
 register('ui', {
   description: 'UI automation tools (click, keyboard, hover, scroll, find, eval, type, panel, fullscreen, mouse)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['click', {
       description: 'Click a UI element',
       options: {

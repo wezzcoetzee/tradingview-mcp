@@ -7,7 +7,7 @@ import * as core from '../../core/stream.js';
 
 register('stream', {
   description: 'Monitor your local TradingView chart for changes (JSONL output)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['quote', {
       description: 'Stream real-time price ticks (OHLCV per bar)',
       options: {

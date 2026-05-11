@@ -89,7 +89,7 @@ export async function closeTab() {
 /**
  * Switch to a tab by index. Reconnects CDP to the new target.
  */
-export async function switchTab({ index }) {
+export async function switchTab({ index }: any = {}) {
   const idx = Number(index);
   if (!Number.isInteger(idx) || idx < 0) {
     throw new Error(`Tab index must be a non-negative integer (got ${JSON.stringify(index)})`);

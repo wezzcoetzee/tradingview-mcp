@@ -3,27 +3,33 @@
   "version": "1.0.0",
   "description": "MCP bridge for TradingView Desktop via Chrome DevTools Protocol",
   "type": "module",
-  "main": "src/server.js",
+  "main": "src/server.ts",
   "bin": {
-    "tv": "src/cli/index.js"
+    "tv": "src/cli/index.ts"
   },
   "exports": {
-    ".": "./src/server.js",
-    "./core": "./src/core/index.js"
+    ".": "./src/server.ts",
+    "./core": "./src/core/index.ts"
   },
   "scripts": {
-    "start": "node src/server.js",
-    "tv": "node src/cli/index.js",
-    "test": "node --test tests/e2e.test.js tests/pine_analyze.test.js",
-    "test:e2e": "node --test tests/e2e.test.js",
-    "test:unit": "node --test tests/pine_analyze.test.js tests/cli.test.js tests/sanitization.test.js tests/connection.test.js tests/drawing.test.js tests/indicators.test.js",
-    "test:cli": "node --test tests/cli.test.js",
-    "test:all": "node --test tests/e2e.test.js tests/pine_analyze.test.js tests/cli.test.js",
-    "test:verbose": "node --test --test-reporter=spec tests/e2e.test.js tests/pine_analyze.test.js",
-    "test:count": "node --test --test-reporter=spec tests/e2e.test.js 2>&1 | tail -5"
+    "start": "tsx src/server.ts",
+    "tv": "tsx src/cli/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/e2e.test.ts tests/pine_analyze.test.ts",
+    "test:e2e": "node --import tsx --test tests/e2e.test.ts",
+    "test:unit": "node --import tsx --test tests/pine_analyze.test.ts tests/cli.test.ts tests/sanitization.test.ts tests/connection.test.ts tests/drawing.test.ts tests/indicators.test.ts",
+    "test:cli": "node --import tsx --test tests/cli.test.ts",
+    "test:all": "node --import tsx --test tests/e2e.test.ts tests/pine_analyze.test.ts tests/cli.test.ts",
+    "test:verbose": "node --import tsx --test --test-reporter=spec tests/e2e.test.ts tests/pine_analyze.test.ts",
+    "test:count": "node --import tsx --test --test-reporter=spec tests/e2e.test.ts 2>&1 | tail -5"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "chrome-remote-interface": "^0.33.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
   }
 }

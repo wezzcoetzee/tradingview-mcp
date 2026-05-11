@@ -3,7 +3,7 @@ import * as core from '../../core/watchlist.js';
 
 register('watchlist', {
   description: 'Watchlist tools (get, add)',
-  subcommands: new Map([
+  subcommands: new Map<string, any>([
     ['get', {
       description: 'Get watchlist symbols',
       handler: () => core.get(),

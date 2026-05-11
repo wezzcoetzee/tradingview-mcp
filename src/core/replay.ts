@@ -16,7 +16,7 @@ function _resolve(deps) {
   };
 }
 
-export async function start({ date, _deps } = {}) {
+export async function start({ date, _deps }: any = {}) {
   const { evaluate, getReplayApi } = _resolve(_deps);
   const rp = await getReplayApi();
   const available = await evaluate(wv(`${rp}.isReplayAvailable()`));
@@ -57,7 +57,7 @@ export async function start({ date, _deps } = {}) {
   return { success: true, replay_started: true, date: date || '(first available)', current_date: currentDate };
 }
 
-export async function step({ _deps } = {}) {
+export async function step({ _deps }: any = {}) {
   const { evaluate, getReplayApi } = _resolve(_deps);
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
@@ -75,7 +75,7 @@ export async function step({ _deps } = {}) {
   return { success: true, action: 'step', current_date: currentDate };
 }
 
-export async function autoplay({ speed, _deps } = {}) {
+export async function autoplay({ speed, _deps }: any = {}) {
   if (speed !== undefined && !(Number.isInteger(speed) && VALID_AUTOPLAY_DELAYS.includes(speed))) {
     throw new Error(`Invalid autoplay delay ${speed}. Valid values: ${VALID_AUTOPLAY_DELAYS.join(', ')}`);
   }
@@ -93,7 +93,7 @@ export async function autoplay({ speed, _deps } = {}) {
   return { success: true, autoplay_active: !!isAutoplay, delay_ms: currentDelay };
 }
 
-export async function stop({ _deps } = {}) {
+export async function stop({ _deps }: any = {}) {
   const { evaluate, getReplayApi } = _resolve(_deps);
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
@@ -104,7 +104,7 @@ export async function stop({ _deps } = {}) {
   return { success: true, action: 'replay_stopped' };
 }
 
-export async function trade({ action, _deps }) {
+export async function trade({ action, _deps }: any = {}) {
   const { evaluate, getReplayApi } = _resolve(_deps);
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
@@ -125,7 +125,7 @@ export async function trade({ action, _deps }) {
   return { success: true, action, position: result.position, realized_pnl: result.realized_pnl };
 }
 
-export async function status({ _deps } = {}) {
+export async function status({ _deps }: any = {}) {
   const { evaluate, getReplayApi } = _resolve(_deps);
   const rp = await getReplayApi();
   const st = await evaluate(`
