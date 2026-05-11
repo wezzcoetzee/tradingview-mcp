@@ -1,7 +1,9 @@
 /**
  * Core data access logic.
  */
-import { evaluate, evaluateAsync, KNOWN_PATHS, safeString } from '../connection.js';
+import { evaluate as _evaluate, evaluateAsync, KNOWN_PATHS, safeString } from '../connection.js';
+
+const evaluate = _evaluate;
 import { debug } from '../debug.js';
 
 const MAX_OHLCV_BARS = 500;
@@ -136,15 +138,52 @@ export async function getOhlcv({ count, summary } = {}) {
   return { success: true, bar_count: data.bars.length, total_available: data.total_bars, source: data.source, bars: data.bars };
 }
 
-export async function getIndicator({ entity_id }) {
-  const data = await evaluate(`
+const RESOLVE_INPUTS_JS = `
+function resolveStudyInputs(study) {
+  var pineInputs = [];
+  try { pineInputs = study.getInputValues(); } catch(e) {}
+  if (Array.isArray(pineInputs) && pineInputs.length > 0) return pineInputs;
+
+  try {
+    var props = typeof study.properties === 'function' ? study.properties() : study._properties;
+    var inputsProp = props && props.inputs;
+    if (inputsProp) {
+      var childs = typeof inputsProp.childs === 'function' ? inputsProp.childs() : inputsProp;
+      var INTERNAL = /^_/;
+      var keys = Object.keys(childs).filter(function(k) { return !INTERNAL.test(k); });
+      if (keys.length > 0) {
+        return keys.map(function(k) {
+          var node = childs[k];
+          var v = node.value;
+          var current;
+          if (typeof v === 'object' && v !== null && typeof v.value === 'function') {
+            current = v.value();
+          } else if ('_value' in node) {
+            current = node._value;
+          } else if (typeof v === 'function') {
+            try { current = v(); } catch(e2) {}
+          }
+          return { id: k, value: current };
+        });
+      }
+    }
+  } catch(e) {}
+
+  return [];
+}
+`;
+
+export async function getIndicator({ entity_id, _deps }) {
+  const ev = _deps?.evaluate || evaluate;
+  const data = await ev(`
     (function() {
+      ${RESOLVE_INPUTS_JS}
       var api = ${CHART_API};
       var study = api.getStudyById(${safeString(entity_id)});
       if (!study) return { error: 'Study not found: ' + ${safeString(entity_id)} };
-      var result = { name: null, inputs: null, visible: null };
+      var result = { inputs: null, visible: null };
       try { result.visible = study.isVisible(); } catch(e) {}
-      try { result.inputs = study.getInputValues(); } catch(e) { result.inputs_error = e.message; }
+      result.inputs = resolveStudyInputs(study);
       return result;
     })()
   `);
