@@ -89,12 +89,11 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
   const inputs = inputsRaw ? (typeof inputsRaw === 'string' ? JSON.parse(inputsRaw) : inputsRaw) : undefined;
 
   if (action === 'add') {
-    const inputArr = inputs ? Object.entries(inputs).map(([k, v]) => ({ id: k, value: v })) : [];
     const before = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
     await evaluate(`
       (function() {
         var chart = ${CHART_API};
-        chart.createStudy(${safeString(indicator)}, false, false, ${JSON.stringify(inputArr)});
+        chart.createStudy(${safeString(indicator)}, false, false);
       })()
     `);
 
@@ -109,7 +108,12 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
       newIds = (after || []).filter(id => !beforeIds.includes(id));
       if (newIds.length > 0) break;
     }
-    return { success: newIds.length > 0, action: 'add', indicator, entity_id: newIds[0] || null, new_study_count: newIds.length };
+    const newId = newIds[0] || null;
+    if (newId && inputs && Object.keys(inputs).length > 0) {
+      const { setInputs } = await import('./indicators.js');
+      await setInputs({ entity_id: newId, inputs, _deps });
+    }
+    return { success: newIds.length > 0, action: 'add', indicator, entity_id: newId, new_study_count: newIds.length };
   } else if (action === 'remove') {
     if (!entity_id) throw new Error('entity_id required for remove action. Use chart_get_state to find study IDs.');
     await evaluate(`

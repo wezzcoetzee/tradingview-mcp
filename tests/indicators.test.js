@@ -108,6 +108,35 @@ describe('setInputs — neither path produces descriptors', () => {
   });
 });
 
+// Structural assertions on the injected CDP expression. Mocked-evaluate unit tests
+// can't exercise the in-page logic, so these guard the specific shape that matters:
+// the widget API must be used, and writes must go through the study's property tree
+// (not the broken inner .value.setValue() path that doesn't trigger recompute).
+describe('setInputs — injected expression contract', () => {
+  it('uses widget.getStudyById and writes via _study.properties().childs().inputs.childs()', async () => {
+    let capturedExpr = '';
+    const evaluate = (expr) => {
+      capturedExpr = expr;
+      return Promise.resolve({ updated_inputs: { length: 50 }, available_inputs: ['length', 'source'] });
+    };
+
+    await setInputs({ entity_id: 'x', inputs: { length: 50 }, _deps: { evaluate } });
+
+    assert.match(capturedExpr, /getStudyById/, 'must look up study via the widget API');
+    assert.match(capturedExpr, /getInputsInfo/, 'must read input metadata via the widget API');
+    assert.match(
+      capturedExpr,
+      /_study\.properties\(\)\.childs\(\)\.inputs\.childs\(\)/,
+      'must reach into the API study\'s property tree to write inputs',
+    );
+    assert.doesNotMatch(
+      capturedExpr,
+      /\.value\.setValue\(/,
+      'must NOT write via node.value.setValue — that path does not trigger recompute on built-in studies',
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // getIndicator — read side
 // ---------------------------------------------------------------------------
