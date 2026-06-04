@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 /**
  * tv — CLI for TradingView Desktop via Chrome DevTools Protocol.

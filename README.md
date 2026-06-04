@@ -1,9 +1,5 @@
 # TradingView MCP Bridge
 
-ORIGINAL VERSION [HERE](https://github.com/tradesdontlie/tradingview-mcp)
-
-I copied this repo as the original repo isn't being maintained anymore, I've submited pull requests to improve the codebase and they sit without reviews. All credit goes to the original reposoitry.
-
 Personal AI assistant for your TradingView Desktop charts. Connects Claude Code to your locally running TradingView app via Chrome DevTools Protocol for AI-assisted chart analysis, Pine Script development, and workflow automation.
 
 > [!WARNING]
@@ -52,7 +48,7 @@ See [RESEARCH.md](RESEARCH.md) for open questions, findings, and related work.
 ## Prerequisites
 
 - **TradingView Desktop app** (paid subscription required for real-time data)
-- **Node.js 18+**
+- **[Bun](https://bun.sh) 1.x** (runs the TypeScript server and CLI directly — no build step)
 - **Claude Code** with MCP support (for MCP tools) or any terminal (for CLI)
 - **macOS, Windows, or Linux**
 
@@ -76,7 +72,7 @@ Gives your AI assistant eyes and hands on your own chart:
 
 Paste this into Claude Code and it will handle the rest:
 
-> Install the TradingView MCP server. Clone https://github.com/wezzcoetzee/tradingview-mcp.git, run npm install, add it to my MCP config at ~/.claude/.mcp.json, and launch TradingView with the debug port. Then verify the connection with tv_health_check.
+> Install the TradingView MCP server. Clone https://github.com/wezzcoetzee/tradingview-mcp.git, run bun install, add it to my MCP config at ~/.claude/.mcp.json, and launch TradingView with the debug port. Then verify the connection with tv_health_check.
 
 Or follow the manual steps below.
 
@@ -87,7 +83,7 @@ Or follow the manual steps below.
 ```bash
 git clone https://github.com/wezzcoetzee/tradingview-mcp.git
 cd tradingview-mcp
-npm install
+bun install
 ```
 
 ### 2. Launch TradingView with CDP
@@ -125,8 +121,8 @@ Add to your Claude Code MCP config (`~/.claude/.mcp.json` or project `.mcp.json`
 {
   "mcpServers": {
     "tradingview": {
-      "command": "node",
-      "args": ["/path/to/tradingview-mcp/src/server.js"]
+      "command": "bun",
+      "args": ["/path/to/tradingview-mcp/src/server.ts"]
     }
   }
 }
@@ -144,10 +140,10 @@ Every MCP tool is also accessible as a `tv` CLI command. All output is JSON for 
 
 ```bash
 # Install globally (optional)
-npm link
+bun link
 
 # Or run directly
-node src/cli/index.js <command>
+bun run tv <command>
 ```
 
 ### Quick Examples
@@ -338,7 +334,7 @@ Tools return compact output by default to minimize context usage. For a typical 
 To opt in (e.g. for power-user automation you trust end-to-end):
 
 ```bash
-TRADINGVIEW_MCP_ALLOW_EVAL=1 npm start
+TRADINGVIEW_MCP_ALLOW_EVAL=1 bun start
 ```
 
 When the flag is unset, the tool is not registered with the MCP server and direct calls into `core.uiEvaluate()` throw.
@@ -364,8 +360,11 @@ The key flag: `--remote-debugging-port=9222`
 ## Testing
 
 ```bash
-# Requires TradingView running with --remote-debugging-port=9222
-npm test
+# Offline suite (no TradingView needed)
+bun run test:unit
+
+# Full suite — requires TradingView running with --remote-debugging-port=9222
+bun test
 ```
 
 Comprehensive test suite covering: tool wiring, Pine Script static analysis, server-side compilation, drawing/replay flows, sanitization, and CLI routing.
@@ -380,6 +379,10 @@ Claude Code  ←→  MCP Server (stdio)  ←→  CDP (port 9222)  ←→  Tradin
 - **Connection**: Chrome DevTools Protocol on localhost:9222
 - **Streaming**: Poll-and-diff loop with deduplication, JSONL output to stdout
 - **No dependencies** beyond `@modelcontextprotocol/sdk` and `chrome-remote-interface`
+
+## Credits
+
+This is a maintained fork of [tradesdontlie/tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp). Full credit to the original author for the foundation; this fork extends it with a TypeScript migration, additional tooling, and ongoing maintenance.
 
 ## Attributions
 

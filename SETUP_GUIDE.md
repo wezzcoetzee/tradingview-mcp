@@ -7,7 +7,7 @@ This file is a step-by-step guide for Claude Code (or any LLM agent) to install 
 ```bash
 git clone https://github.com/wezzcoetzee/tradingview-mcp.git ~/tradingview-mcp
 cd ~/tradingview-mcp
-npm install
+bun install
 ```
 
 If the user specifies a different install path, use that instead of `~/tradingview-mcp`.
@@ -20,8 +20,8 @@ Add the server to the user's Claude Code MCP configuration. The config file is a
 {
   "mcpServers": {
     "tradingview": {
-      "command": "node",
-      "args": ["<INSTALL_PATH>/src/server.js"]
+      "command": "bun",
+      "args": ["<INSTALL_PATH>/src/server.ts"]
     }
   }
 }
@@ -85,7 +85,7 @@ To use the `tv` CLI command globally:
 
 ```bash
 cd ~/tradingview-mcp
-npm link
+bun link
 ```
 
 Then `tv status`, `tv quote`, `tv pine compile`, etc. work from anywhere.
@@ -97,7 +97,7 @@ Then `tv status`, `tv quote`, `tv pine compile`, etc. work from anywhere.
 | `cdp_connected: false` | Launch TradingView with `--remote-debugging-port=9222` |
 | `ECONNREFUSED` | TradingView isn't running or port 9222 is blocked |
 | MCP server not showing in Claude Code | Check `~/.claude/.mcp.json` syntax, restart Claude Code |
-| `tv` command not found | Run `npm link` from the project directory |
+| `tv` command not found | Run `bun link` from the project directory |
 | Tools return stale data | TradingView may still be loading — wait a few seconds |
 | Pine Editor tools fail | Open the Pine Editor panel first (`ui_open_panel pine-editor open`) |
 

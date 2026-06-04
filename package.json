@@ -12,24 +12,22 @@
     "./core": "./src/core/index.ts"
   },
   "scripts": {
-    "start": "tsx src/server.ts",
-    "tv": "tsx src/cli/index.ts",
+    "start": "bun src/server.ts",
+    "tv": "bun src/cli/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/e2e.test.ts tests/pine_analyze.test.ts",
-    "test:e2e": "node --import tsx --test tests/e2e.test.ts",
-    "test:unit": "node --import tsx --test tests/pine_analyze.test.ts tests/cli.test.ts tests/sanitization.test.ts tests/connection.test.ts tests/drawing.test.ts tests/indicators.test.ts",
-    "test:cli": "node --import tsx --test tests/cli.test.ts",
-    "test:all": "node --import tsx --test tests/e2e.test.ts tests/pine_analyze.test.ts tests/cli.test.ts",
-    "test:verbose": "node --import tsx --test --test-reporter=spec tests/e2e.test.ts tests/pine_analyze.test.ts",
-    "test:count": "node --import tsx --test --test-reporter=spec tests/e2e.test.ts 2>&1 | tail -5"
+    "test": "bun test tests/e2e.test.ts tests/pine_analyze.test.ts",
+    "test:e2e": "bun test tests/e2e.test.ts",
+    "test:unit": "bun test tests/pine_analyze.test.ts tests/cli.test.ts tests/sanitization.test.ts tests/connection.test.ts tests/drawing.test.ts tests/indicators.test.ts",
+    "test:cli": "bun test tests/cli.test.ts",
+    "test:all": "bun test tests/e2e.test.ts tests/pine_analyze.test.ts tests/cli.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "chrome-remote-interface": "^0.33.2"
   },
   "devDependencies": {
+    "@types/bun": "^1.1.0",
     "@types/node": "^22.0.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }
 }
