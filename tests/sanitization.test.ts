@@ -187,10 +187,13 @@ describe('chart.js — sanitized evaluate calls', () => {
   it('manageIndicator add uses safeString for indicator name', async () => {
     const { _deps, evaluate } = mockDeps();
     evaluate.calls.length = 0;
-    // First evaluate call is getAllStudies (before), then createStudy, then getAllStudies (after)
+    // First evaluate call is getAllStudies (before), then createStudy, then getAllStudies (after).
+    // Simulate the study actually being added so manageIndicator's poll loop exits immediately.
+    let created = false;
     const evalFn = async (expr) => {
       evaluate.calls.push(expr);
-      if (expr.includes('getAllStudies')) return ['id1'];
+      if (expr.includes('createStudy')) { created = true; return undefined; }
+      if (expr.includes('getAllStudies')) return created ? ['id1', 'id2'] : ['id1'];
       return undefined;
     };
     _deps.evaluate = evalFn as any;

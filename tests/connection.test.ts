@@ -1,6 +1,7 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import * as connection from '../src/connection.js';
+import { debug, isDebugEnabled } from '../src/debug.js';
 
 describe('connection — concurrency & error handling', () => {
   it('safeString throws on null/undefined to surface caller bugs', () => {
@@ -18,30 +19,28 @@ describe('connection — concurrency & error handling', () => {
 });
 
 describe('debug helper', () => {
-  it('respects DEBUG env var matcher', async () => {
+  it('respects DEBUG env var matcher', () => {
     const original = process.env.DEBUG;
     try {
       delete process.env.DEBUG;
-      const mod = await import(`../src/debug.js?nocache=${Date.now()}`);
-      assert.equal(mod.debugEnabled, false);
+      assert.equal(isDebugEnabled(), false);
     } finally {
       if (original !== undefined) process.env.DEBUG = original;
       else delete process.env.DEBUG;
     }
   });
 
-  it('writes to stderr when enabled', async () => {
+  it('writes to stderr when enabled', () => {
     const original = process.env.DEBUG;
     process.env.DEBUG = 'tv-mcp,other';
     try {
-      const mod = await import(`../src/debug.js?nocache=${Date.now()}`);
-      assert.equal(mod.debugEnabled, true);
+      assert.equal(isDebugEnabled(), true);
 
       const writes = [];
       const origWrite = process.stderr.write;
       process.stderr.write = (chunk) => { writes.push(String(chunk)); return true; };
       try {
-        mod.debug('test', 'hello', 'world');
+        debug('test', 'hello', 'world');
       } finally {
         process.stderr.write = origWrite;
       }

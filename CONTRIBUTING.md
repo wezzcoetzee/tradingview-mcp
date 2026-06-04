@@ -31,14 +31,15 @@ If you're unsure whether a feature fits, open an issue to discuss before submitt
 ## Development
 
 ```bash
-npm install
-npm test          # offline test suite (no TradingView needed)
-tv status         # verify CDP connection (TradingView must be running)
+bun install
+bun run test:unit   # offline test suite (no TradingView needed)
+bun test            # full suite (requires TradingView running)
+tv status           # verify CDP connection (TradingView must be running)
 ```
 
 ## Pull Requests
 
 - Keep changes focused — one feature or fix per PR
 - Add tests for new functionality where possible
-- Ensure `npm test` passes
+- Ensure `bun run test:unit` passes
 - Test against a live TradingView Desktop instance before submitting

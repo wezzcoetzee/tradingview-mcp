@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in this project, please report it responsibly.
 
-**Email:** Open a private security advisory via [GitHub Security Advisories](https://github.com/tradesdontlie/tradingview-mcp/security/advisories/new).
+**Email:** Open a private security advisory via [GitHub Security Advisories](https://github.com/wezzcoetzee/tradingview-mcp/security/advisories/new).
 
 **Do not** open a public issue for security vulnerabilities.
 
@@ -28,7 +28,7 @@ This project connects to a locally running TradingView Desktop instance via Chro
 - Only run TradingView with `--remote-debugging-port=9222` on localhost
 - Do not expose port 9222 to your network or the internet
 - Do not pipe `tv stream` output to external services without reviewing the data
-- Keep your TradingView Desktop and Node.js installations up to date
+- Keep your TradingView Desktop and Bun installations up to date
 - Leave `TRADINGVIEW_MCP_ALLOW_EVAL` unset unless you specifically need `ui_evaluate` and trust every input that reaches it (see below)
 
 ## Opt-in Capabilities
