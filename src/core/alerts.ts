@@ -3,7 +3,7 @@
  */
 import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
 
-export async function create({ condition, price, message }: any = {}) {
+export async function create({ price, message }: any = {}) {
   const opened = await evaluate(`
     (function() {
       var btn = document.querySelector('[aria-label="Create Alert"]')
@@ -69,7 +69,7 @@ export async function create({ condition, price, message }: any = {}) {
     })()
   `);
 
-  return { success: !!created, price, condition, message: message || '(none)', price_set: !!priceSet, source: 'dom_fallback' };
+  return { success: !!created, price, message: message || '(none)', price_set: !!priceSet, note: 'Condition must be set manually in the TradingView dialog before clicking Create.', source: 'dom_fallback' };
 }
 
 export async function list() {

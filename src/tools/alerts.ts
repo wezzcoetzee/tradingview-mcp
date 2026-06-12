@@ -3,12 +3,11 @@ import { jsonResult } from './_format.js';
 import * as core from '../core/alerts.js';
 
 export function registerAlertTools(server) {
-  server.tool('alert_create', 'Create a price alert via the TradingView alert dialog', {
-    condition: z.string().describe('Alert condition (e.g., "crossing", "greater_than", "less_than")'),
+  server.tool('alert_create', 'Create a price alert via the TradingView alert dialog. Note: condition must be set manually in the dialog before clicking Create.', {
     price: z.coerce.number().describe('Price level for the alert'),
     message: z.string().optional().describe('Alert message'),
-  }, async ({ condition, price, message }) => {
-    try { return jsonResult(await core.create({ condition, price, message })); }
+  }, async ({ price, message }) => {
+    try { return jsonResult(await core.create({ price, message })); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 

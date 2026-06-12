@@ -151,9 +151,10 @@ export async function setVisibleRange({ from, to, _deps }: any = {}) {
       var startIdx = bars.firstIndex();
       var endIdx = bars.lastIndex();
       var fromIdx = startIdx, toIdx = endIdx;
+      var fromFound = false;
       for (var i = startIdx; i <= endIdx; i++) {
         var v = bars.valueAt(i);
-        if (v && v[0] >= ${f} && fromIdx === startIdx) fromIdx = i;
+        if (v && v[0] >= ${f} && !fromFound) { fromIdx = i; fromFound = true; }
         if (v && v[0] <= ${t}) toIdx = i;
       }
       ts.zoomToBarsRange(fromIdx, toIdx);
@@ -199,9 +200,10 @@ export async function scrollToDate({ date }: any = {}) {
       var startIdx = bars.firstIndex();
       var endIdx = bars.lastIndex();
       var fromIdx = startIdx, toIdx = endIdx;
+      var fromFound = false;
       for (var i = startIdx; i <= endIdx; i++) {
         var v = bars.valueAt(i);
-        if (v && v[0] >= ${from} && fromIdx === startIdx) fromIdx = i;
+        if (v && v[0] >= ${from} && !fromFound) { fromIdx = i; fromFound = true; }
         if (v && v[0] <= ${to}) toIdx = i;
       }
       ts.zoomToBarsRange(fromIdx, toIdx);

@@ -121,11 +121,21 @@ function withTimeout(promise, ms, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+let preferredTargetId: string | null = null;
+
+export function setPreferredTargetId(id: string | null) {
+  preferredTargetId = id;
+}
+
 async function findChartTarget() {
   const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`, {
     signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS),
   });
   const targets = await resp.json();
+  if (preferredTargetId) {
+    const preferred = targets.find(t => t.id === preferredTargetId);
+    if (preferred) return preferred;
+  }
   return targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
     || targets.find(t => t.type === 'page' && /tradingview/i.test(t.url))
     || null;
