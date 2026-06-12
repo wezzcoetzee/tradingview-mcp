@@ -95,7 +95,8 @@ export function analyze({ source }: any = {}) {
     if (fromMatch) {
       const name = fromMatch[1].trim();
       const args = fromMatch[2].trim();
-      const size = args === '' ? 0 : args.split(',').length;
+      // Skip size inference when args contain nested calls (commas inside parens)
+      const size = args === '' ? 0 : args.includes('(') ? null : args.split(',').length;
       arrays.set(name, { name, size, line: i + 1 });
       continue;
     }
