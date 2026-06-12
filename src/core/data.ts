@@ -87,7 +87,7 @@ export function buildGraphicsJS(collectionName, mapKey, filter) {
 }
 
 export async function getOhlcv({ count, summary }: any = {}) {
-  const limit = Math.min(count ?? 100, MAX_OHLCV_BARS);
+  const limit = Math.min(Math.max(1, Math.floor(count ?? 100)), MAX_OHLCV_BARS);
   let data;
   try {
     data = await evaluate(`
@@ -128,7 +128,7 @@ export async function getOhlcv({ count, summary }: any = {}) {
       range: high - low,
       change: last.close - first.open,
       change_pct: first.open !== 0
-        ? ((last.close - first.open) / first.open) * 100 + '%'
+        ? Math.round(((last.close - first.open) / first.open) * 10000) / 100
         : null,
       avg_volume: Math.round(volSum / bars.length),
       last_5_bars: bars.slice(-5),
@@ -347,7 +347,7 @@ export async function getQuote({ symbol }: any = {}) {
       return quote;
     })()
   `);
-  if (!data || (!data.last && !data.close)) throw new Error('Could not retrieve quote. The chart may still be loading.');
+  if (!data || (data.last == null && data.close == null)) throw new Error('Could not retrieve quote. The chart may still be loading.');
   return { success: true, ...data };
 }
 
