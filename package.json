@@ -1,6 +1,7 @@
 {
   "name": "tradingview-mcp",
   "version": "1.0.0",
+  "private": true,
   "description": "MCP bridge for TradingView Desktop via Chrome DevTools Protocol",
   "type": "module",
   "main": "src/server.ts",
@@ -19,6 +20,9 @@
     "pine:push": "bun scripts/pine_push.ts",
     "pine:pull": "bun scripts/pine_pull.ts",
     "test:live": "bun test tests/e2e.test.ts"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

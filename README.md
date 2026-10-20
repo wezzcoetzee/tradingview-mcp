@@ -343,7 +343,7 @@ To opt in (e.g. for power-user automation you trust end-to-end), set both variab
 TRADINGVIEW_MCP_ALLOW_EVAL=1 TRADINGVIEW_MCP_CONFIRM_EVAL=1 bun start
 ```
 
-When either flag is unset, `core.uiEvaluate()` throws.
+Without `TRADINGVIEW_MCP_ALLOW_EVAL` the tool is not registered at all. With it set but `TRADINGVIEW_MCP_CONFIRM_EVAL` unset, the tool is listed but every call throws.
 
 | Env var | Default | Effect |
 |---|---|---|
