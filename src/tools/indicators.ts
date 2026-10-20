@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { defineTool, IDEMPOTENT_WRITE } from './_format.js';
+import { defineTool, zBool, IDEMPOTENT_WRITE } from './_format.js';
 import * as core from '../core/indicators.js';
 
 export function registerIndicatorTools(server: McpServer) {
@@ -20,7 +20,7 @@ export function registerIndicatorTools(server: McpServer) {
     description: 'Show or hide an indicator/study on the chart',
     inputSchema: {
       entity_id: z.string().describe('Entity ID of the study (from chart_get_state)'),
-      visible: z.coerce.boolean().describe('true to show, false to hide'),
+      visible: zBool.describe('true to show, false to hide'),
     },
     annotations: IDEMPOTENT_WRITE,
     run: ({ entity_id, visible }) => core.toggleVisibility({ entity_id, visible }),

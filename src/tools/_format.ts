@@ -4,7 +4,7 @@
  */
 import type { McpServer, ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
-import type { ZodRawShape, z } from 'zod';
+import { z, type ZodRawShape } from 'zod';
 
 export function jsonResult(obj: unknown, isError = false): CallToolResult {
   return {
@@ -18,6 +18,9 @@ export const READ_ONLY = { readOnlyHint: true } satisfies ToolAnnotations;
 export const WRITE = { readOnlyHint: false, destructiveHint: false } satisfies ToolAnnotations;
 export const IDEMPOTENT_WRITE = { ...WRITE, idempotentHint: true } satisfies ToolAnnotations;
 export const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true } satisfies ToolAnnotations;
+
+/** Boolean that also accepts "true"/"false" strings; z.coerce.boolean() would turn "false" into true. */
+export const zBool = z.union([z.boolean(), z.enum(['true', 'false']).transform(v => v === 'true')]);
 
 interface ToolDefinition<Shape extends ZodRawShape> {
   name: string;

@@ -31,7 +31,7 @@ fi
 
 # Fallback: find in common dirs
 if [ -z "$APP" ]; then
-  APP=$(find /opt /usr/local /snap "$HOME/.local" -name "tradingview" -o -name "TradingView" -type f -executable 2>/dev/null | head -1)
+  APP=$(find /opt /usr/local /snap "$HOME/.local" -type f -executable \( -name "tradingview" -o -name "TradingView" \) 2>/dev/null | head -1)
 fi
 
 if [ -z "$APP" ] || [ ! -f "$APP" ]; then
@@ -43,8 +43,9 @@ if [ -z "$APP" ] || [ ! -f "$APP" ]; then
   exit 1
 fi
 
-# Kill any existing TradingView
-pkill -f "[Tt]rading[Vv]iew" 2>/dev/null
+# Kill any existing TradingView by exact process name (pkill -f would also match
+# the MCP server running from the tradingview-mcp repo)
+pkill -x -i tradingview 2>/dev/null
 sleep 1
 
 echo "Found TradingView at: $APP"

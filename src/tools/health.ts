@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { defineTool, DESTRUCTIVE, READ_ONLY } from './_format.js';
+import { defineTool, zBool, DESTRUCTIVE, READ_ONLY } from './_format.js';
 import * as core from '../core/health.js';
 
 export function registerHealthTools(server: McpServer) {
@@ -31,7 +31,7 @@ export function registerHealthTools(server: McpServer) {
     description: 'Launch TradingView Desktop with Chrome DevTools Protocol (remote debugging) enabled. Auto-detects install location on Mac, Windows, and Linux.',
     inputSchema: {
       port: z.coerce.number().optional().describe('CDP port (default 9222)'),
-      kill_existing: z.coerce.boolean().optional().describe('Kill existing TradingView instances first (default true)'),
+      kill_existing: zBool.optional().describe('Kill existing TradingView instances first (default true)'),
     },
     annotations: DESTRUCTIVE,
     run: ({ port, kill_existing }) => core.launch({ port, kill_existing }),
