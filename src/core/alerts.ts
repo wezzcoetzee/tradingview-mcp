@@ -105,9 +105,14 @@ export async function create({ price, message }: { price: number; message?: stri
     return { success: false, error: 'Create button not found in the alert dialog', price_set: true };
   }
 
-  await new Promise(r => setTimeout(r, 1000));
-  const after = await list();
-  const created = findNewAlert(before.alerts, after.alerts);
+  // The alert list is server-backed, so give it a few seconds to reflect the new alert
+  let after = before;
+  let created: AlertSummary | undefined;
+  for (let i = 0; i < 6 && !created; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    after = await list();
+    created = findNewAlert(before.alerts, after.alerts);
+  }
 
   if (!created) {
     return {
