@@ -494,22 +494,16 @@ export async function save() {
     })()
   `);
 
-  if (dialogHandled) await new Promise(r => setTimeout(r, 500));
-
   // The Pine toolbar shows a "Saved" button once the script has no pending changes
-  let confirmed = false;
-  for (let i = 0; i < 10 && !confirmed; i++) {
-    confirmed = await evaluate(`
-      (function() {
-        var btns = document.querySelectorAll('button');
-        for (var i = 0; i < btns.length; i++) {
-          if (btns[i].offsetParent !== null && /^Saved/.test(btns[i].textContent.trim())) return true;
-        }
-        return false;
-      })()
-    `);
-    if (!confirmed) await new Promise(r => setTimeout(r, 300));
-  }
+  const { ok: confirmed } = await waitFor<boolean>(`
+    (function() {
+      var btns = document.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) {
+        if (btns[i].offsetParent !== null && /^Saved/.test(btns[i].textContent.trim())) return true;
+      }
+      return false;
+    })()
+  `, (saved) => saved, { timeout: 3000, interval: 300 });
 
   const script_name = await readEditorTitle();
   if (!confirmed) {
