@@ -94,30 +94,68 @@ describe('time range navigation', () => {
     assert.deepEqual(result.loaded, { from: 1000, to: 2000 });
   });
 
-  const zoomed = { found: true, loaded_from: 1000, loaded_to: 2000, zoomed_from: 1200, zoomed_to: 1800 };
-  const rangeEval = (visible: object) => (expr: string) => (expr.includes('zoomToBarsRange') ? zoomed : visible);
+  // 60-minute bars: tolerance is max(10% of span, 3 bars = 10800s)
+  const loaded = { loaded_from: 900_000, loaded_to: 1_200_000 };
+  const zoomedTo = (zoomed_from: number, zoomed_to: number) => ({ found: true, ...loaded, zoomed_from, zoomed_to });
+  const rangeEval = (zoom: object, visible: object) => (expr: string) => {
+    if (expr.includes('zoomToBarsRange')) return zoom;
+    return expr.includes('.resolution()') ? '60' : visible;
+  };
 
-  it('setVisibleRange succeeds once the visible range matches, without a partial flag', async () => {
-    const { _deps } = deps(rangeEval({ from: 1210, to: 1790 }));
-    const result: Record<string, any> = await setVisibleRange({ from: 1200, to: 1800, _deps });
+  it('setVisibleRange succeeds once the visible range covers the zoomed bars, without a partial flag', async () => {
+    const { _deps } = deps(rangeEval(zoomedTo(1_000_000, 1_100_000), { from: 995_000, to: 1_105_000 }));
+    const result: Record<string, any> = await setVisibleRange({ from: 1_000_000, to: 1_100_000, _deps });
     assert.equal(result.success, true);
     assert.equal(result.partially_loaded, undefined);
   });
 
-  it('setVisibleRange flags a request that extends past the loaded bars', async () => {
-    const { _deps } = deps(rangeEval({ from: 1200, to: 1800 }));
-    const result: Record<string, any> = await setVisibleRange({ from: 500, to: 1800, _deps });
+  it('setVisibleRange accepts a one-bar range padded by a few bars', async () => {
+    const { _deps } = deps(rangeEval(zoomedTo(1_000_000, 1_000_000), { from: 990_000, to: 1_010_000 }));
+    const result: Record<string, any> = await setVisibleRange({ from: 1_000_000, to: 1_000_000, _deps });
     assert.equal(result.success, true);
-    assert.equal(result.partially_loaded, true);
-    assert.deepEqual(result.loaded, { from: 1000, to: 2000 });
   });
 
-  it('setVisibleRange fails with expected vs seen when the range never settles', async () => {
-    const { _deps } = deps(rangeEval({ from: 0, to: 5000 }));
-    const result: Record<string, any> = await setVisibleRange({ from: 1200, to: 1800, _deps });
+  it('setVisibleRange flags a request that extends past the loaded bars', async () => {
+    const { _deps } = deps(rangeEval(zoomedTo(1_000_000, 1_100_000), { from: 1_000_000, to: 1_100_000 }));
+    const result: Record<string, any> = await setVisibleRange({ from: 500_000, to: 1_100_000, _deps });
+    assert.equal(result.success, true);
+    assert.equal(result.partially_loaded, true);
+    assert.deepEqual(result.loaded, { from: 900_000, to: 1_200_000 });
+  });
+
+  it('setVisibleRange fails with expected vs seen when the visible range does not cover the bars', async () => {
+    const seen = { from: 1_005_000, to: 1_100_000 };
+    const { _deps } = deps(rangeEval(zoomedTo(1_000_000, 1_100_000), seen));
+    const result: Record<string, any> = await setVisibleRange({ from: 1_000_000, to: 1_100_000, _deps });
     assert.equal(result.success, false);
-    assert.deepEqual(result.expected, { from: 1200, to: 1800 });
-    assert.deepEqual(result.seen, { from: 0, to: 5000 });
+    assert.deepEqual(result.expected, { from: 1_000_000, to: 1_100_000 });
+    assert.deepEqual(result.seen, seen);
+  });
+
+  it('setVisibleRange fails when the visible range is far wider than the zoomed bars', async () => {
+    const { _deps } = deps(rangeEval(zoomedTo(1_000_000, 1_100_000), { from: 0, to: 1_100_000 }));
+    const result: Record<string, any> = await setVisibleRange({ from: 1_000_000, to: 1_100_000, _deps });
+    assert.equal(result.success, false);
+  });
+
+  it('scrollToDate succeeds, then flags and fails like setVisibleRange', async () => {
+    const window = zoomedTo(1_000_000, 1_100_000);
+    const ok: Record<string, any> = await scrollToDate({
+      date: '1050000', _deps: deps(rangeEval(window, { from: 1_000_000, to: 1_100_000 }))._deps,
+    });
+    assert.equal(ok.success, true);
+    assert.equal(ok.partially_loaded, undefined);
+
+    const partial: Record<string, any> = await scrollToDate({
+      date: '905000', _deps: deps(rangeEval(window, { from: 1_000_000, to: 1_100_000 }))._deps,
+    });
+    assert.equal(partial.partially_loaded, true);
+
+    const stuck: Record<string, any> = await scrollToDate({
+      date: '1050000', _deps: deps(rangeEval(window, { from: 1_050_000, to: 1_060_000 }))._deps,
+    });
+    assert.equal(stuck.success, false);
+    assert.deepEqual(stuck.expected, { from: 1_000_000, to: 1_100_000 });
   });
 
   it('scrollToDate returns not_in_loaded_range when no bars match', async () => {
