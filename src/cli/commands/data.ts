@@ -66,8 +66,9 @@ register('data', {
       description: 'Get strategy trade list',
       options: {
         max: { type: 'string', short: 'n', description: 'Max trades to return' },
+        offset: { type: 'string', short: 'o', description: 'First trade index from the oldest (default: latest trades)' },
       },
-      handler: (opts) => core.getTrades({ max_trades: opts.max ? Number(opts.max) : undefined }),
+      handler: (opts) => core.getTrades({ max_trades: opts.max ? Number(opts.max) : undefined, offset: opts.offset ? Number(opts.offset) : undefined }),
     }],
     ['equity', {
       description: 'Get strategy equity curve',

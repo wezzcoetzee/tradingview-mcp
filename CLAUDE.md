@@ -7,7 +7,7 @@
 ### "What's on my chart right now?"
 1. `chart_get_state` → symbol, timeframe, chart type, list of all indicators with entity IDs
 2. `data_get_study_values` → current numeric values from all visible indicators (RSI, MACD, BBands, EMAs, etc.)
-3. `quote_get` → real-time price, OHLC, volume for current symbol
+3. `quote_get` → real-time price, OHLC, volume for the active chart symbol (errors if `symbol` differs; `chart_set_symbol` first)
 
 ### "What levels/lines/labels are showing?"
 Custom Pine indicators draw with `line.new()`, `label.new()`, `table.new()`, `box.new()`. These are invisible to normal data tools. Use:
@@ -60,7 +60,8 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 6. `replay_stop` → return to realtime
 
 ### "Screen multiple symbols"
-- `batch_run` with `symbols: ["ES1!", "NQ1!", "YM1!"]` and `action: "screenshot"` or `"get_ohlcv"`
+- `batch_run` with `symbols: ["ES1!", "NQ1!", "YM1!"]` and `action: "screenshot"`, `"get_ohlcv"` (summary) or `"get_strategy_results"`; restores the original symbol/timeframe
+- `data_get_trades` returns the latest trades with `total`; pass `offset` to page from the oldest
 
 ### "Draw on the chart"
 - `draw_shape` → horizontal_line, trend_line, rectangle, text (pass point + optional point2)
