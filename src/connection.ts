@@ -161,6 +161,10 @@ export function setPreferredTargetId(id: string | null) {
   preferredTargetId = id;
 }
 
+export function getPreferredTargetId(): string | null {
+  return preferredTargetId;
+}
+
 async function findChartTarget(): Promise<CdpTarget | null> {
   const targets = await listTargets();
   // A closed tab's id never comes back, so stop preferring it.

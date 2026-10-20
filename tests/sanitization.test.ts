@@ -160,7 +160,7 @@ describe('chart.js — sanitized evaluate calls', () => {
     assert.ok(call.includes('"15"'), 'timeframe wrapped via safeString');
   });
 
-  it('setType validates chart type range 0-9', async () => {
+  it('setType accepts known chart styles', async () => {
     let current: number | undefined;
     const evaluate = async (expr: string) => {
       const set = /setChartType\((\d+)\)/.exec(expr);
@@ -170,12 +170,12 @@ describe('chart.js — sanitized evaluate calls', () => {
     };
     const { _deps } = mockDeps({ evaluate });
     // Valid names
-    for (const name of ['Candles', 'Line', 'Area', 'HeikinAshi']) {
+    for (const name of ['Candles', 'Line', 'Area', 'HeikinAshi', 'Baseline', 'StepLine']) {
       const r = await setType({ chart_type: name, _deps });
       assert.equal(r.success, true);
     }
     // Valid numbers
-    for (const n of [0, 1, 5, 9]) {
+    for (const n of [0, 1, 5, 9, 10, 15]) {
       const r = await setType({ chart_type: String(n), _deps });
       assert.equal(r.success, true);
     }
@@ -183,7 +183,7 @@ describe('chart.js — sanitized evaluate calls', () => {
 
   it('setType rejects invalid chart types', async () => {
     const { _deps } = mockDeps();
-    for (const bad of ['invalid', '10', '-1', '1.5', 'NaN']) {
+    for (const bad of ['invalid', '11', '16', '-1', '1.5', 'NaN']) {
       await assert.rejects(
         () => setType({ chart_type: bad, _deps }),
         /Unknown chart type/,

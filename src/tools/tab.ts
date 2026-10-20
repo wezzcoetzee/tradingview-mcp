@@ -6,14 +6,14 @@ import * as core from '../core/tab.js';
 export function registerTabTools(server: McpServer) {
   defineTool(server, {
     name: 'tab_list',
-    description: 'List all open TradingView chart tabs',
+    description: 'List all open TradingView chart tabs; active marks the tab other tools act on',
     annotations: READ_ONLY,
     run: () => core.list(),
   });
 
   defineTool(server, {
     name: 'tab_new',
-    description: 'Open a new chart tab',
+    description: 'Open a new chart tab and switch to it; new_tab identifies it',
     annotations: WRITE,
     run: () => core.newTab(),
   });
