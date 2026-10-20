@@ -1,7 +1,8 @@
 /**
  * Core replay mode logic.
  */
-import { evaluate as _evaluate, getReplayApi as _getReplayApi, requireFinite } from '../connection.js';
+import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, getReplayApi as _getReplayApi, requireFinite } from '../connection.js';
+import { waitFor } from '../wait.js';
 
 export const VALID_AUTOPLAY_DELAYS = [100, 143, 200, 300, 1000, 2000, 3000, 5000, 10000];
 
@@ -10,14 +11,17 @@ function wv(path) {
 }
 
 function _resolve(deps) {
+  const evaluate = deps?.evaluate || _evaluate;
   return {
-    evaluate: deps?.evaluate || _evaluate,
+    evaluate,
+    evaluateAsync: deps?.evaluateAsync || _evaluateAsync,
     getReplayApi: deps?.getReplayApi || _getReplayApi,
+    waitOpts: { evaluate, ...deps?.waitOpts },
   };
 }
 
 export async function start({ date, _deps }: any = {}) {
-  const { evaluate, getReplayApi } = _resolve(_deps);
+  const { evaluate, evaluateAsync, getReplayApi, waitOpts } = _resolve(_deps);
   const rp = await getReplayApi();
   const available = await evaluate(wv(`${rp}.isReplayAvailable()`));
   if (!available) throw new Error('Replay is not available for the current symbol/timeframe');
@@ -32,9 +36,9 @@ export async function start({ date, _deps }: any = {}) {
     const parsed = new Date(date).getTime();
     if (isNaN(parsed)) throw new Error(`Invalid date: "${date}". Use YYYY-MM-DD format.`);
     const ts = requireFinite(parsed, 'replay date timestamp');
-    await evaluate(`${rp}.selectDate(${ts}).then(function() { return 'ok'; })`);
+    await evaluateAsync(`${rp}.selectDate(${ts}).then(function() { return 'ok'; })`);
   } else {
-    await evaluate(`${rp}.selectFirstAvailableDate()`);
+    await evaluateAsync(`Promise.resolve(${rp}.selectFirstAvailableDate()).then(function() { return 'ok'; })`);
   }
 
   // Poll until replay is fully initialized: isReplayStarted AND currentDate is set.
@@ -46,33 +50,30 @@ export async function start({ date, _deps }: any = {}) {
     started = await evaluate(wv(`${rp}.isReplayStarted()`));
     currentDate = await evaluate(wv(`${rp}.currentDate()`));
     if (started && currentDate !== null) break;
-    await new Promise(r => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, waitOpts.interval ?? 250));
   }
 
-  if (!started) {
+  if (!started || currentDate === null || currentDate === undefined) {
     try { await evaluate(`${rp}.stopReplay()`); } catch {}
-    throw new Error('Replay failed to start. The selected date may not have data for this timeframe. Try a more recent date or a higher timeframe (e.g., Daily).');
+    throw new Error('Replay failed to start (no current date). The selected date may not have data for this timeframe. Try a more recent date or a higher timeframe (e.g., Daily).');
   }
 
   return { success: true, replay_started: true, date: date || '(first available)', current_date: currentDate };
 }
 
 export async function step({ _deps }: any = {}) {
-  const { evaluate, getReplayApi } = _resolve(_deps);
+  const { evaluate, getReplayApi, waitOpts } = _resolve(_deps);
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
   if (!started) throw new Error('Replay is not started. Use replay_start first.');
   const before = await evaluate(wv(`${rp}.currentDate()`));
   await evaluate(`${rp}.doStep()`);
-  // doStep() is async internally — currentDate takes ~500ms to update.
-  // Poll until it changes or timeout after 3s.
-  let currentDate = before;
-  for (let i = 0; i < 12; i++) {
-    await new Promise(r => setTimeout(r, 250));
-    currentDate = await evaluate(wv(`${rp}.currentDate()`));
-    if (currentDate !== before) break;
+  // doStep() is async internally, so currentDate takes ~500ms to update.
+  const { ok, value } = await waitFor(wv(`${rp}.currentDate()`), (d) => d !== before, { timeout: 3000, ...waitOpts });
+  if (!ok) {
+    return { success: false, action: 'step', error: 'Replay date did not advance', previous_date: before, current_date: value ?? before };
   }
-  return { success: true, action: 'step', current_date: currentDate };
+  return { success: true, action: 'step', current_date: value };
 }
 
 export async function autoplay({ speed, _deps }: any = {}) {
@@ -105,24 +106,35 @@ export async function stop({ _deps }: any = {}) {
 }
 
 export async function trade({ action, _deps }: any = {}) {
-  const { evaluate, getReplayApi } = _resolve(_deps);
+  const { evaluate, getReplayApi, waitOpts } = _resolve(_deps);
+  if (!['buy', 'sell', 'close'].includes(action)) throw new Error('Invalid action. Use: buy, sell, or close');
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
   if (!started) throw new Error('Replay is not started. Use replay_start first.');
 
-  if (action === 'buy') await evaluate(`${rp}.buy()`);
-  else if (action === 'sell') await evaluate(`${rp}.sell()`);
-  else if (action === 'close') await evaluate(`${rp}.closePosition()`);
-  else throw new Error('Invalid action. Use: buy, sell, or close');
-
-  const result = await evaluate(`
+  const readPosition = `
     (function() {
       var r = ${rp};
       function unwrap(v) { return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; }
       return { position: unwrap(r.position()), realized_pnl: unwrap(r.realizedPL()) };
     })()
-  `);
-  return { success: true, action, position: result.position, realized_pnl: result.realized_pnl };
+  `;
+  const before = await evaluate(readPosition);
+
+  if (action === 'buy') await evaluate(`${rp}.buy()`);
+  else if (action === 'sell') await evaluate(`${rp}.sell()`);
+  else await evaluate(`${rp}.closePosition()`);
+
+  // Orders fill asynchronously: wait for the position to move (or go flat for close).
+  const { ok, value } = await waitFor<{ position: unknown; realized_pnl: unknown }>(
+    readPosition,
+    (now) => action === 'close' ? !now.position : JSON.stringify(now.position) !== JSON.stringify(before?.position),
+    { timeout: 3000, ...waitOpts },
+  );
+  if (!ok) {
+    return { success: false, action, error: `Position did not settle after ${action}`, position: value?.position ?? before?.position, realized_pnl: value?.realized_pnl ?? before?.realized_pnl };
+  }
+  return { success: true, action, position: value.position, realized_pnl: value.realized_pnl };
 }
 
 export async function status({ _deps }: any = {}) {

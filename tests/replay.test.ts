@@ -30,13 +30,15 @@ function mockEvaluate(responses: any = {}, sequence?: any) {
   return fn;
 }
 
+const FAST = { timeout: 100, interval: 10 };
+
 function mockGetReplayApi() {
   return async () => 'window.__rp';
 }
 
 function mockDeps(responses: any = {}, sequence?: any) {
   const evaluate = mockEvaluate(responses, sequence);
-  return { _deps: { evaluate, getReplayApi: mockGetReplayApi() }, evaluate };
+  return { _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST }, evaluate };
 }
 
 // ── start() ──────────────────────────────────────────────────────────────
@@ -111,7 +113,7 @@ describe('start() — date selection and polling', () => {
       return undefined;
     };
     evaluate.calls = [];
-    const result = await start({ date: '2026-01-01', _deps: { evaluate, getReplayApi: mockGetReplayApi() } });
+    const result = await start({ date: '2026-01-01', _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } });
     assert.equal(result.success, true);
     assert.equal(result.current_date, 1700000000);
     assert.ok(pollCount >= 4, 'polled multiple times');
@@ -129,14 +131,22 @@ describe('start() — date selection and polling', () => {
     };
     evaluate.calls = [];
     await assert.rejects(
-      () => start({ date: '2026-01-01', _deps: { evaluate, getReplayApi: mockGetReplayApi() } }),
+      () => start({ date: '2026-01-01', _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } }),
       (err) => {
         assert.ok((err as any).message.includes('Replay failed to start'));
         return true;
       },
     );
     assert.ok(stopCalled, 'stopReplay called for cleanup');
-  }, 15000); // start() polls for up to 7.5s before giving up
+  });
+
+  it('fails when replay started but no current date ever arrives', async () => {
+    const { _deps } = mockDeps({
+      'isReplayAvailable': true, 'showReplayToolbar': undefined, 'selectDate': 'ok',
+      'isReplayStarted': true, 'currentDate': null, 'stopReplay': undefined,
+    });
+    await assert.rejects(() => start({ date: '2026-01-01', _deps }), /no current date/);
+  });
 });
 
 // ── step() ───────────────────────────────────────────────────────────────
@@ -157,13 +167,13 @@ describe('step() — doStep and polling', () => {
       return undefined;
     };
     evaluate.calls = [];
-    const result = await step({ _deps: { evaluate, getReplayApi: mockGetReplayApi() } });
+    const result = await step({ _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } });
     assert.equal(result.success, true);
     assert.equal(result.current_date, 2000);
     assert.equal(result.action, 'step');
   });
 
-  it('returns stale date if poll times out (date never changes)', async () => {
+  it('fails if the date never advances', async () => {
     const evaluate = async (expr) => {
       if (expr.includes('isReplayStarted')) return true;
       if (expr.includes('currentDate')) return 5000; // never changes
@@ -171,7 +181,9 @@ describe('step() — doStep and polling', () => {
       return undefined;
     };
     evaluate.calls = [];
-    const result = await step({ _deps: { evaluate, getReplayApi: mockGetReplayApi() } });
+    const result = await step({ _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } });
+    assert.equal(result.success, false);
+    assert.match(result.error, /did not advance/);
     assert.equal(result.current_date, 5000);
   });
 
@@ -273,20 +285,33 @@ describe('stop()', () => {
 // ── trade() ──────────────────────────────────────────────────────────────
 
 describe('trade()', () => {
-  for (const action of ['buy', 'sell', 'close']) {
-    it(`executes ${action} action`, async () => {
-      const { _deps, evaluate } = mockDeps({
-        'isReplayStarted': true,
-        [action === 'close' ? 'closePosition' : action]: undefined,
-        'realizedPL': { position: 1, realized_pnl: 50.5 },
-      });
-      const result = await trade({ action, _deps });
+  // position() is 0 until the order fills; close flips it back to 0.
+  function fillingDeps(startPosition: number, filledPosition: number) {
+    let ordered = false;
+    const evaluate = async (expr: string) => {
+      if (expr.includes('isReplayStarted')) return true;
+      if (/\.(buy|sell|closePosition)\(\)/.test(expr)) { ordered = true; return undefined; }
+      if (expr.includes('realizedPL')) return { position: ordered ? filledPosition : startPosition, realized_pnl: 50.5 };
+      return undefined;
+    };
+    return { evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST };
+  }
+
+  for (const [action, from, to] of [['buy', 0, 1], ['sell', 0, -1], ['close', 1, 0]] as const) {
+    it(`executes ${action} action and waits for the position to settle`, async () => {
+      const result = await trade({ action, _deps: fillingDeps(from, to) });
       assert.equal(result.success, true);
       assert.equal(result.action, action);
-      assert.equal(result.position, 1);
+      assert.equal(result.position, to);
       assert.equal(result.realized_pnl, 50.5);
     });
   }
+
+  it('fails when the position never changes after an order', async () => {
+    const result = await trade({ action: 'buy', _deps: fillingDeps(0, 0) });
+    assert.equal(result.success, false);
+    assert.match(result.error, /did not settle/);
+  });
 
   it('throws on invalid action', async () => {
     const { _deps } = mockDeps({ 'isReplayStarted': true });
@@ -324,7 +349,7 @@ describe('status()', () => {
       };
     };
     evaluate.calls = calls;
-    const result = await status({ _deps: { evaluate, getReplayApi: mockGetReplayApi() } });
+    const result = await status({ _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } });
     assert.equal(result.success, true);
     assert.equal(result.is_replay_started, true);
     assert.equal(result.current_date, 1700000000);

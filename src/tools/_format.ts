@@ -6,10 +6,12 @@ import type { McpServer, ToolCallback } from '@modelcontextprotocol/sdk/server/m
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { z, type ZodRawShape } from 'zod';
 
+/** A `{ success: false }` payload is an error even when no exception was thrown. */
 export function jsonResult(obj: unknown, isError = false): CallToolResult {
+  const failed = isError || (typeof obj === 'object' && obj !== null && 'success' in obj && obj.success === false);
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }],
-    ...(isError && { isError: true }),
+    ...(failed && { isError: true }),
   };
 }
 

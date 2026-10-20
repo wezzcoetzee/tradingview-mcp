@@ -1,6 +1,6 @@
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
-import { symbolMatches } from '../src/core/watchlist.js';
+import { symbolMatches, get } from '../src/core/watchlist.js';
 
 describe('symbolMatches', () => {
   it('matches exact and case-insensitive symbols', () => {
@@ -18,5 +18,14 @@ describe('symbolMatches', () => {
 
   it('rejects different tickers', () => {
     assert.ok(!symbolMatches('AAPL', 'AAPL2'));
+  });
+});
+
+describe('get', () => {
+  it('fails instead of reporting an empty watchlist when the panel is closed', async () => {
+    const result = await get({ _deps: { evaluate: async () => ({ symbols: [], source: 'panel_closed' }) } });
+    assert.equal(result.success, false);
+    assert.match(result.error, /panel is closed/);
+    assert.deepEqual(result.symbols, []);
   });
 });

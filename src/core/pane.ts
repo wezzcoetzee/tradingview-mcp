@@ -3,6 +3,7 @@
  * Controls multi-chart layouts (split panes) in TradingView.
  */
 import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
+import { waitFor, symbolMatches } from '../wait.js';
 
 const CWC = 'window.TradingViewApi._chartWidgetCollection';
 
@@ -97,7 +98,13 @@ export async function setLayout({ layout }: any = {}) {
   }
 
   await evaluateAsync(`${CWC}.setLayout(${safeString(resolved)})`);
-  await new Promise(r => setTimeout(r, 500));
+  const { ok, value } = await waitFor<string>(
+    `(function() { var t = ${CWC}._layoutType; return (t && typeof t.value === 'function') ? t.value() : t; })()`,
+    (current) => current === resolved,
+  );
+  if (!ok) {
+    return { success: false, error: 'Layout did not change', expected: resolved, seen: value ?? null };
+  }
 
   const state = await list();
   return {
@@ -147,16 +154,14 @@ export async function setSymbol({ index, symbol }: any = {}) {
   await focus({ index: idx });
   await new Promise(r => setTimeout(r, 300));
 
-  // Now set symbol on the now-active chart
-  await evaluateAsync(`
-    (function() {
-      var chart = window.TradingViewApi._activeChartWidgetWV.value();
-      return new Promise(function(resolve) {
-        chart.setSymbol(${safeString(symbol)}, {});
-        setTimeout(resolve, 500);
-      });
-    })()
-  `);
+  await evaluate(`window.TradingViewApi._activeChartWidgetWV.value().setSymbol(${safeString(symbol)}, {})`);
 
+  const { ok, value } = await waitFor<string>(
+    `${CWC}.getAll()[${idx}].model().mainSeries().symbol()`,
+    (current) => symbolMatches(current, symbol),
+  );
+  if (!ok) {
+    return { success: false, index: idx, error: 'Pane did not switch to the requested symbol', expected: symbol, seen: value ?? null };
+  }
   return { success: true, index: idx, symbol };
 }

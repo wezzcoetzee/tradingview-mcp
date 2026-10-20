@@ -4,9 +4,9 @@
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
 
-export async function get() {
+export async function get({ _deps }: any = {}) {
   // Try internal API first — reads from the active watchlist widget
-  const symbols = await evaluate(`
+  const symbols = await (_deps?.evaluate || evaluate)(`
     (function() {
       // Method 1: Try the watchlist widget's internal data
       try {
@@ -53,6 +53,10 @@ export async function get() {
       return { symbols: results, source: results.length > 0 ? 'text_scan' : 'empty' };
     })()
   `);
+
+  if (symbols?.source === 'panel_closed' || symbols?.source === 'no_container') {
+    return { success: false, error: 'Watchlist panel is closed. Open it with ui_open_panel (panel: "watchlist").', source: symbols.source, count: 0, symbols: [] };
+  }
 
   return {
     success: true,
