@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { defineTool, READ_ONLY } from './_format.js';
+import { defineTool, zBool, READ_ONLY } from './_format.js';
 import * as core from '../core/data.js';
 
 export function registerDataTools(server: McpServer) {
@@ -9,7 +9,7 @@ export function registerDataTools(server: McpServer) {
     description: 'Get OHLCV bar data from the chart. Use summary=true for compact stats instead of all bars (saves context).',
     inputSchema: {
       count: z.coerce.number().optional().describe('Number of bars to retrieve (max 500, default 100)'),
-      summary: z.coerce.boolean().optional().describe('Return summary stats (high, low, open, close, avg volume, range) instead of all bars — much smaller output'),
+      summary: zBool.optional().describe('Return summary stats (high, low, open, close, avg volume, range) instead of all bars — much smaller output'),
     },
     annotations: READ_ONLY,
     run: ({ count, summary }) => core.getOhlcv({ count, summary }),
@@ -72,7 +72,7 @@ export function registerDataTools(server: McpServer) {
     description: 'Read horizontal price levels drawn by Pine Script indicators (line.new). Returns deduplicated price levels per study. Use study_filter to target a specific indicator.',
     inputSchema: {
       study_filter: z.string().optional().describe('Substring to match study name (e.g., "Profiler", "NY Levels"). Omit for all.'),
-      verbose: z.coerce.boolean().optional().describe('Return raw line data with IDs, coordinates, colors (default false — returns only unique price levels)'),
+      verbose: zBool.optional().describe('Return raw line data with IDs, coordinates, colors (default false — returns only unique price levels)'),
     },
     annotations: READ_ONLY,
     run: ({ study_filter, verbose }) => core.getPineLines({ study_filter, verbose }),
@@ -84,7 +84,7 @@ export function registerDataTools(server: McpServer) {
     inputSchema: {
       study_filter: z.string().optional().describe('Substring to match study name. Omit for all.'),
       max_labels: z.coerce.number().optional().describe('Max labels per study (default 50). Set higher if you need all.'),
-      verbose: z.coerce.boolean().optional().describe('Return raw label data with IDs, colors, positions (default false — returns only text + price)'),
+      verbose: zBool.optional().describe('Return raw label data with IDs, colors, positions (default false — returns only text + price)'),
     },
     annotations: READ_ONLY,
     run: ({ study_filter, max_labels, verbose }) => core.getPineLabels({ study_filter, max_labels, verbose }),
@@ -105,7 +105,7 @@ export function registerDataTools(server: McpServer) {
     description: 'Read box/zone boundaries drawn by Pine Script indicators (box.new). Returns deduplicated {high, low} price zones. Use study_filter to target a specific indicator.',
     inputSchema: {
       study_filter: z.string().optional().describe('Substring to match study name. Omit for all.'),
-      verbose: z.coerce.boolean().optional().describe('Return all boxes with IDs and coordinates (default false — returns unique price zones)'),
+      verbose: zBool.optional().describe('Return all boxes with IDs and coordinates (default false — returns unique price zones)'),
     },
     annotations: READ_ONLY,
     run: ({ study_filter, verbose }) => core.getPineBoxes({ study_filter, verbose }),

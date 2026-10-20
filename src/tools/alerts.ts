@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { defineTool, DESTRUCTIVE, READ_ONLY, WRITE } from './_format.js';
+import { defineTool, zBool, DESTRUCTIVE, READ_ONLY, WRITE } from './_format.js';
 import * as core from '../core/alerts.js';
 
 export function registerAlertTools(server: McpServer) {
@@ -26,7 +26,7 @@ export function registerAlertTools(server: McpServer) {
     name: 'alert_delete',
     description: 'Delete all alerts or open context menu for deletion',
     inputSchema: {
-      delete_all: z.coerce.boolean().optional().describe('Delete all alerts'),
+      delete_all: zBool.optional().describe('Delete all alerts'),
     },
     annotations: DESTRUCTIVE,
     run: ({ delete_all }) => core.deleteAlerts({ delete_all }),

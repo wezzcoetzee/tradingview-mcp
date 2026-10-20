@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { defineTool, DESTRUCTIVE, READ_ONLY, WRITE } from './_format.js';
+import { defineTool, zBool, DESTRUCTIVE, READ_ONLY, WRITE } from './_format.js';
 import * as core from '../core/ui.js';
 
 export function registerUiTools(server: McpServer) {
@@ -100,7 +100,7 @@ export function registerUiTools(server: McpServer) {
       x: z.coerce.number().describe('X coordinate (pixels from left)'),
       y: z.coerce.number().describe('Y coordinate (pixels from top)'),
       button: z.enum(['left', 'right', 'middle']).optional().describe('Mouse button (default left)'),
-      double_click: z.coerce.boolean().optional().describe('Double click (default false)'),
+      double_click: zBool.optional().describe('Double click (default false)'),
     },
     annotations: DESTRUCTIVE,
     run: ({ x, y, button, double_click }) => core.mouseClick({ x, y, button, double_click }),
