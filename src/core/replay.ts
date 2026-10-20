@@ -3,7 +3,9 @@
  */
 import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, getReplayApi as _getReplayApi, requireFinite } from '../connection.js';
 import { waitFor } from '../wait.js';
+import type { ReportProgress } from './progress.js';
 
+export const TRADE_ACTIONS = ['buy', 'sell', 'close'] as const;
 export const VALID_AUTOPLAY_DELAYS = [100, 143, 200, 300, 1000, 2000, 3000, 5000, 10000];
 
 function wv(path) {
@@ -71,7 +73,7 @@ export async function start({ date, _deps }: any = {}) {
   return { success: true, replay_started: true, date: date || '(first available)', current_date: currentDate };
 }
 
-export async function step({ count = 1, _deps }: { count?: number; _deps?: unknown } = {}) {
+export async function step({ count = 1, onProgress, _deps }: { count?: number; onProgress?: ReportProgress; _deps?: unknown } = {}) {
   if (!Number.isInteger(count) || count < 1 || count > MAX_STEP_COUNT) {
     throw new Error(`Invalid step count ${count}. Use an integer from 1 to ${MAX_STEP_COUNT}.`);
   }
@@ -92,6 +94,7 @@ export async function step({ count = 1, _deps }: { count?: number; _deps?: unkno
     }
     current = value;
     advanced++;
+    await onProgress?.(advanced, count);
   }
   return { success: true, action: 'step', requested: count, advanced, current_date: current };
 }
@@ -155,7 +158,7 @@ export async function stop({ _deps }: any = {}) {
 
 export async function trade({ action, _deps }: any = {}) {
   const { evaluate, getReplayApi, waitOpts } = _resolve(_deps);
-  if (!['buy', 'sell', 'close'].includes(action)) throw new Error('Invalid action. Use: buy, sell, or close');
+  if (!(TRADE_ACTIONS as readonly string[]).includes(action)) throw new Error('Invalid action. Use: buy, sell, or close');
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
   if (!started) throw new Error('Replay is not started. Use replay_start first.');

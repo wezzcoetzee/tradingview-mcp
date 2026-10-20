@@ -3,14 +3,39 @@
  * All tool files register through defineTool instead of calling server.tool directly.
  */
 import type { McpServer, ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
+import type { CallToolResult, ServerNotification, ServerRequest, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { z, type ZodRawShape } from 'zod';
+import type { ReportProgress } from '../core/progress.js';
 
-/** A `{ success: false }` payload is an error even when no exception was thrown. */
+/** Per-call context handed to a tool's `run`. */
+export interface ToolContext {
+  /** Set only when the client sent a progressToken; tools with long loops call it after each step. */
+  progress?: ReportProgress;
+}
+
+type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+
+export function progressReporter(extra: ToolExtra): ReportProgress | undefined {
+  const progressToken = extra._meta?.progressToken;
+  if (progressToken === undefined) return undefined;
+  return (progress, total) => extra.sendNotification({ method: 'notifications/progress', params: { progressToken, progress, total } });
+}
+
+/**
+ * A `{ success: false }` payload is an error even when no exception was thrown.
+ * A string `image_base64` (PNG) is returned as MCP image content instead of JSON text.
+ */
 export function jsonResult(obj: unknown, isError = false): CallToolResult {
   const failed = isError || (typeof obj === 'object' && obj !== null && 'success' in obj && obj.success === false);
+  const { image_base64, ...rest } = (typeof obj === 'object' && obj !== null ? obj : {}) as { image_base64?: unknown };
+  const image = typeof image_base64 === 'string' ? image_base64 : undefined;
+  const body = image === undefined ? obj : rest;
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }],
+    content: [
+      { type: 'text' as const, text: JSON.stringify(body, null, 2) },
+      ...(image === undefined ? [] : [{ type: 'image' as const, data: image, mimeType: 'image/png' }]),
+    ],
     ...(failed && { isError: true }),
   };
 }
@@ -30,7 +55,7 @@ interface ToolDefinition<Shape extends ZodRawShape> {
   /** Zod shape; omit for tools without arguments. */
   inputSchema?: Shape;
   annotations: ToolAnnotations;
-  run: (args: z.infer<z.ZodObject<Shape>>) => unknown | Promise<unknown>;
+  run: (args: z.infer<z.ZodObject<Shape>>, context: ToolContext) => unknown | Promise<unknown>;
   /** Build a custom failure payload (extra hints, cleanup). Defaults to `{ success: false, error }`. */
   onError?: (message: string, err: unknown) => object | Promise<object>;
 }
@@ -43,9 +68,9 @@ export function defineTool<Shape extends ZodRawShape = {}>(
   server: McpServer,
   { name, description, inputSchema, annotations, run, onError }: ToolDefinition<Shape>,
 ) {
-  const handler = async (args: z.infer<z.ZodObject<Shape>>) => {
+  const handler = async (args: z.infer<z.ZodObject<Shape>>, extra: ToolExtra) => {
     try {
-      return jsonResult(await run(args));
+      return jsonResult(await run(args, { progress: progressReporter(extra) }));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       return jsonResult(onError ? await onError(message, err) : { success: false, error: message }, true);

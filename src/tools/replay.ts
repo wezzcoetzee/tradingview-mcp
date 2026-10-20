@@ -16,12 +16,12 @@ export function registerReplayTools(server: McpServer) {
 
   defineTool(server, {
     name: 'replay_step',
-    description: 'Advance one or more bars in replay mode. Returns advanced, the number of bars actually stepped; stops and reports success false at the first step that does not move.',
+    description: 'Advance one or more bars in replay mode (sends progress per bar when the client asks). Returns advanced, the number of bars actually stepped; stops and reports success false at the first step that does not move.',
     inputSchema: {
       count: z.coerce.number().int().min(1).max(core.MAX_STEP_COUNT).optional().describe(`Number of bars to advance (1 to ${core.MAX_STEP_COUNT}, default 1)`),
     },
     annotations: WRITE,
-    run: ({ count }) => core.step({ count }),
+    run: ({ count }, { progress }) => core.step({ count, onProgress: progress }),
   });
 
   defineTool(server, {
@@ -38,7 +38,7 @@ export function registerReplayTools(server: McpServer) {
     name: 'replay_autoplay',
     description: 'Turn autoplay on or off in replay mode, optionally set speed. Without enabled it flips the current state. autoplay_active reports the verified state.',
     inputSchema: {
-      speed: z.coerce.number().optional().describe('Autoplay delay in ms (lower = faster). Valid values: 100, 143, 200, 300, 1000, 2000, 3000, 5000, 10000. Leave empty to keep the current speed.'),
+      speed: z.coerce.number().optional().describe(`Autoplay delay between bars, in milliseconds (lower = faster). Valid values: ${core.VALID_AUTOPLAY_DELAYS.join(', ')}. Leave empty to keep the current speed.`),
       enabled: zBool.optional().describe('true to start autoplay, false to stop it. Omit to flip the current state.'),
     },
     annotations: WRITE,
@@ -56,7 +56,7 @@ export function registerReplayTools(server: McpServer) {
     name: 'replay_trade',
     description: 'Execute a trade action in replay mode (buy, sell, or close position)',
     inputSchema: {
-      action: z.string().describe('Trade action: buy, sell, or close'),
+      action: z.enum(core.TRADE_ACTIONS).describe('Trade action; close flattens the open position'),
     },
     annotations: DESTRUCTIVE,
     run: ({ action }) => core.trade({ action }),
