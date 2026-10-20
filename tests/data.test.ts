@@ -2,7 +2,7 @@ import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import {
   getQuote, getOhlcv, getTrades, getStrategyResults, getEquity,
-  getPineLabels, getPineTables, getPineLines, horizontalLevels, tableRows,
+  getPineLabels, getPineTables, getStudyValues, getPineLines, horizontalLevels, tableRows,
 } from '../src/core/data.js';
 import { batchRun } from '../src/core/batch.js';
 import { backoffMs, sleep, pollLoop } from '../src/core/stream.js';
@@ -78,7 +78,13 @@ describe('pine graphics readers', () => {
   it('tableRows keeps empty cells so columns stay aligned', () => {
     const cell = (row: number, col: number, t: string) => ({ id: `${row}${col}`, raw: { tid: 1, row, col, t } });
     const [table] = tableRows([cell(0, 0, 'A'), cell(0, 1, ''), cell(0, 2, 'C'), cell(1, 0, ''), cell(1, 1, ''), cell(1, 2, '')]);
-    assert.deepEqual(table.rows, ['A |  | C']);
+    assert.deepEqual(table.rows, ['A |  | C', ' |  | ']);
+  });
+
+  it('tableRows keeps a blank row between filled rows so indices stay aligned', () => {
+    const cell = (row: number, t: string) => ({ id: row, raw: { tid: 1, row, col: 0, t } });
+    const [table] = tableRows([cell(0, 'A'), cell(2, 'C')]);
+    assert.deepEqual(table.rows, ['A', '', 'C']);
   });
 
   it('getPineTables formats tables', async () => {
@@ -91,6 +97,30 @@ describe('pine graphics readers', () => {
     const line = (y1: number, y2: number) => ({ id: y1, raw: { y1, y2 } });
     assert.deepEqual(horizontalLevels([line(0, 0), line(5, 6), line(3, 3)]), [3, 0]);
     assert.deepEqual(horizontalLevels([line(1, 1), line(2, 2), line(3, 3)], 2), [3, 2]);
+  });
+
+  it('horizontalLevels currentOnly drops lines that stop before the latest bar', () => {
+    const line = (y: number, x2: number) => ({ id: y, raw: { y1: y, y2: y, x2 } });
+    const items = [line(1, 10), line(2, 100), line(3, 100)];
+    assert.deepEqual(horizontalLevels(items, 50, true), [3, 2]);
+    assert.deepEqual(horizontalLevels(items), [3, 2, 1]);
+  });
+
+  it('getPineLines reports current_levels as a subset of horizontal_levels', async () => {
+    const line = (y: number, x2: number) => ({ id: y, raw: { y1: y, y2: y, x2 } });
+    const _deps = graphics([{ name: 'Alpha Levels', count: 2, items: [line(1, 10), line(2, 100)] }]);
+    const res = await getPineLines({ _deps });
+    assert.deepEqual(res.studies[0].horizontal_levels, [2, 1]);
+    assert.deepEqual(res.studies[0].current_levels, [2]);
+  });
+
+  it('getStudyValues filters by name and hints on a miss', async () => {
+    const studies = [{ entity_id: 'a', name: 'RSI', values: { RSI: '50' } }];
+    const hit = await getStudyValues({ study_filter: 'rsi', _deps: graphics(studies, ['RSI', 'MACD']) });
+    assert.equal(hit.study_count, 1);
+    assert.equal(hit.warning, undefined);
+    const miss = await getStudyValues({ study_filter: 'nope', _deps: graphics([], ['RSI', 'MACD']) });
+    assert.deepEqual(miss.available_studies, ['RSI', 'MACD']);
   });
 });
 
@@ -133,6 +163,23 @@ describe('batchRun', () => {
     assert.equal(res.success, false);
     assert.equal(res.failed, 1);
     assert.match(res.results[0].error, /did not reach AAPL/);
+  });
+
+  it('reports a failed restore without masking iteration results', async () => {
+    let calls = 0;
+    const { deps } = baseDeps({
+      waitForChartReady: async () => (++calls === 1 ? { ok: true, value: undefined } : { ok: false, value: { symbol: 'AAPL', resolution: 'D', bars: 1 } }),
+    });
+    const res = await batchRun({ symbols: ['AAPL'], action: 'get_ohlcv', delay_ms: 0, _deps: deps });
+    assert.equal(res.restored, false);
+    assert.equal(res.restore_seen, 'AAPL D');
+    assert.equal(res.results.length, 1);
+  });
+
+  it('reports restored: true on a clean restore', async () => {
+    const { deps } = baseDeps();
+    const res = await batchRun({ symbols: ['AAPL'], action: 'get_ohlcv', delay_ms: 0, _deps: deps });
+    assert.equal(res.restored, true);
   });
 
   it('counts an action-level error as a failure', async () => {

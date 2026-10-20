@@ -101,23 +101,32 @@ export async function readGraphics(collectionName: string, mapKey: string, filte
   const raw: { studies: GraphicsStudy[]; available: string[] } | null = await ev(buildGraphicsJS(collectionName, mapKey, filter));
   const studies = raw?.studies ?? [];
   const available = raw?.available ?? [];
+  return { studies, notes: studyMissNotes(filter, available) };
+}
+
+/** Warning plus available study names when `filter` matches no study; empty otherwise. */
+export function studyMissNotes(filter: string, available: string[]) {
   const missed = filter && !available.some(n => n.toLowerCase().includes(filter.toLowerCase()));
-  return { studies, notes: missed ? { warning: `No study name contains "${filter}"`, available_studies: available } : {} };
+  return missed ? { warning: `No study name contains "${filter}"`, available_studies: available } : {};
 }
 
 const MAX_LEVELS = 50;
 
-/** Distinct horizontal price levels, newest lines first, capped; sloped lines are not levels. */
-export function horizontalLevels(items: GraphicsItem[], maxLevels = MAX_LEVELS): number[] {
+/**
+ * Distinct horizontal price levels, newest lines first, capped; sloped lines are not levels.
+ * With `currentOnly`, keeps just lines that reach the study's latest bar (max x2), dropping stale history.
+ */
+export function horizontalLevels(items: GraphicsItem[], maxLevels = MAX_LEVELS, currentOnly = false): number[] {
+  const lastBar = currentOnly ? Math.max(...items.map(({ raw }) => raw.x2 ?? -Infinity)) : -Infinity;
   const seen = new Set<number>();
   for (let i = items.length - 1; i >= 0 && seen.size < maxLevels; i--) {
-    const { y1, y2 } = items[i].raw;
-    if (y1 != null && y1 === y2) seen.add(y1);
+    const { y1, y2, x2 } = items[i].raw;
+    if (y1 != null && y1 === y2 && (!currentOnly || x2 >= lastBar)) seen.add(y1);
   }
   return [...seen].sort((a, b) => b - a);
 }
 
-/** Text rows per table with empty cells kept, so columns stay aligned. */
+/** Text rows per table with empty cells and blank rows kept, so row and column indices stay aligned. */
 export function tableRows(items: GraphicsItem[]): { rows: string[] }[] {
   const tables = new Map<number, string[][]>();
   for (const { raw: v } of items) {
@@ -126,7 +135,7 @@ export function tableRows(items: GraphicsItem[]): { rows: string[] }[] {
     tables.set(v.tid || 0, rows);
   }
   return [...tables.values()].map(rows => ({
-    rows: Array.from(rows, row => Array.from(row ?? [], c => c ?? '').join(' | ')).filter(r => r.replace(/[ |]/g, '')),
+    rows: Array.from(rows, row => Array.from(row ?? [], c => c ?? '').join(' | ')),
   }));
 }
 
@@ -460,7 +469,7 @@ export async function getDepth() {
   return { success: true, bid_levels: data.bids?.length || 0, ask_levels: data.asks?.length || 0, spread: data.spread, bids: data.bids || [], asks: data.asks || [], raw_values: data.raw_values, note: data.note };
 }
 
-export async function getStudyValues({ _deps }: any = {}) {
+export async function getStudyValues({ study_filter, _deps }: any = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const data = await ev(`
     (function() {
@@ -468,6 +477,8 @@ export async function getStudyValues({ _deps }: any = {}) {
       var model = chart.model();
       var sources = model.model().dataSources();
       var results = [];
+      var available = [];
+      var filter = ${safeString(study_filter || '')}.toLowerCase();
       for (var si = 0; si < sources.length; si++) {
         var s = sources[si];
         if (!s.metaInfo) continue;
@@ -475,6 +486,8 @@ export async function getStudyValues({ _deps }: any = {}) {
           var meta = s.metaInfo();
           var name = meta.description || meta.shortDescription || '';
           if (!name) continue;
+          available.push(name);
+          if (filter && name.toLowerCase().indexOf(filter) === -1) continue;
           var values = {};
           try {
             var dwv = s.dataWindowView();
@@ -496,17 +509,19 @@ export async function getStudyValues({ _deps }: any = {}) {
           if (Object.keys(values).length > 0) results.push({ entity_id: entityId, name: name, values: values });
         } catch(e) {}
       }
-      return results;
+      return { studies: results, available: available };
     })()
   `);
-  return { success: true, study_count: data?.length || 0, studies: data || [] };
+  const studies = data?.studies ?? [];
+  return { success: true, study_count: studies.length, studies, ...studyMissNotes(study_filter || '', data?.available ?? []) };
 }
 
 export async function getPineLines({ study_filter, verbose, max_levels, _deps }: any = {}) {
   const { studies: raw, notes } = await readGraphics('dwglines', 'lines', study_filter, _deps?.evaluate);
   const studies = raw.map(s => {
     const horizontal_levels = horizontalLevels(s.items, max_levels ?? MAX_LEVELS);
-    const result: any = { name: s.name, total_lines: s.count, horizontal_levels };
+    const current_levels = horizontalLevels(s.items, max_levels ?? MAX_LEVELS, true);
+    const result: any = { name: s.name, total_lines: s.count, horizontal_levels, current_levels };
     if (verbose) result.all_lines = s.items.map(({ id, raw: v }) => ({ id, y1: v.y1 ?? null, y2: v.y2 ?? null, x1: v.x1, x2: v.x2, horizontal: v.y1 === v.y2, style: v.st, width: v.w, color: v.ci }));
     return result;
   });

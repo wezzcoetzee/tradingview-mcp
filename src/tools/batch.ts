@@ -6,7 +6,7 @@ import * as core from '../core/batch.js';
 export function registerBatchTools(server: McpServer) {
   defineTool(server, {
     name: 'batch_run',
-    description: 'Run an action across multiple symbols and/or timeframes. Restores the original symbol and timeframe afterwards; success is false if any iteration failed.',
+    description: 'Run an action across multiple symbols and/or timeframes. Restores the original symbol and timeframe afterwards (restored: false plus restore_seen if the chart did not return); success is false if any iteration failed.',
     inputSchema: {
       symbols: z.array(z.string()).describe('Array of symbols to iterate (e.g., ["BTCUSD", "ETHUSD", "AAPL"])'),
       timeframes: z.array(z.string()).optional().describe('Array of timeframes (e.g., ["D", "60", "15"])'),

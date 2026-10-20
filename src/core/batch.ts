@@ -29,6 +29,7 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
   const tfs = timeframes && timeframes.length > 0 ? timeframes : [null];
   const delay = delay_ms ?? 2000;
   const results = [];
+  let restore: { restored: boolean; restore_seen?: string } | undefined;
 
   // setSymbol/setResolution live on the chart collection, or the chart API as a fallback.
   let chartPath: string | undefined;
@@ -41,6 +42,17 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
   };
 
   const original: { symbol: string; resolution: string } | null = await evaluate(CHART_STATE).catch(() => null);
+
+  const restoreChart = async ({ symbol, resolution }: { symbol: string; resolution: string }) => {
+    try {
+      await setChart(symbol, resolution);
+      const ready = await waitForChartReady(symbol, resolution);
+      if (ready.ok) return { restored: true };
+      return { restored: false, restore_seen: ready.value ? `${ready.value.symbol} ${ready.value.resolution}` : 'unknown' };
+    } catch (err) {
+      return { restored: false, restore_seen: `error: ${err.message}` };
+    }
+  };
 
   try {
     for (const symbol of symbols) {
@@ -93,13 +105,10 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
     }
   } finally {
     if (original) {
-      try {
-        await setChart(original.symbol, original.resolution);
-        await waitForChartReady(original.symbol, original.resolution);
-      } catch {}
+      restore = await restoreChart(original);
     }
   }
 
   const failed = results.filter(r => !r.success).length;
-  return { success: failed === 0, total_iterations: results.length, successful: results.length - failed, failed, results };
+  return { success: failed === 0, total_iterations: results.length, successful: results.length - failed, failed, ...restore, results };
 }

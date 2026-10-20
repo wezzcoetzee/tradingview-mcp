@@ -70,7 +70,7 @@ export function registerDataTools(server: McpServer) {
 
   defineTool(server, {
     name: 'data_get_pine_lines',
-    description: 'Read horizontal price levels drawn by Pine Script indicators (line.new). Returns deduplicated price levels per study, newest lines first. Use study_filter to target a specific indicator.',
+    description: 'Read horizontal price levels drawn by Pine Script indicators (line.new). Returns deduplicated price levels per study, newest lines first. horizontal_levels includes stale historical lines; current_levels is the subset still reaching the latest bar. Use study_filter to target a specific indicator.',
     inputSchema: {
       study_filter: z.string().optional().describe('Case-insensitive substring of the study name (e.g., "Profiler", "NY Levels"). Omit for all. A miss lists the available studies.'),
       verbose: zBool.optional().describe('Return raw line data with IDs, coordinates, colors (default false — returns only unique price levels)'),
@@ -94,7 +94,7 @@ export function registerDataTools(server: McpServer) {
 
   defineTool(server, {
     name: 'data_get_pine_tables',
-    description: 'Read table data drawn by Pine Script indicators (table.new). Returns formatted text rows per table. Use study_filter to target a specific indicator.',
+    description: 'Read table data drawn by Pine Script indicators (table.new). Returns formatted text rows per table; blank rows are kept so row indices match the chart. Use study_filter to target a specific indicator.',
     inputSchema: {
       study_filter: z.string().optional().describe('Case-insensitive substring of the study name. Omit for all. A miss lists the available studies.'),
     },
@@ -116,7 +116,10 @@ export function registerDataTools(server: McpServer) {
   defineTool(server, {
     name: 'data_get_study_values',
     description: 'Get current indicator values from the data window for all visible studies (RSI, MACD, Bollinger Bands, EMAs, custom indicators with plot()).',
+    inputSchema: {
+      study_filter: z.string().optional().describe('Case-insensitive substring of the study name. Omit for all. A miss lists the available studies.'),
+    },
     annotations: READ_ONLY,
-    run: () => core.getStudyValues(),
+    run: ({ study_filter }) => core.getStudyValues({ study_filter }),
   });
 }

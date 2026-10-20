@@ -6,15 +6,15 @@
 
 ### "What's on my chart right now?"
 1. `chart_get_state` → symbol, timeframe, chart type, list of all indicators with entity IDs
-2. `data_get_study_values` → current numeric values from all visible indicators (RSI, MACD, BBands, EMAs, etc.)
+2. `data_get_study_values` → current numeric values from all visible indicators (RSI, MACD, BBands, EMAs, etc.); accepts `study_filter`
 3. `quote_get` → real-time price, OHLC, volume for the active chart symbol (errors if `symbol` differs; `chart_set_symbol` first)
 
 ### "What levels/lines/labels are showing?"
 Custom Pine indicators draw with `line.new()`, `label.new()`, `table.new()`, `box.new()`. These are invisible to normal data tools. Use:
 
-1. `data_get_pine_lines` → horizontal price levels drawn by indicators (deduplicated, sorted high→low)
+1. `data_get_pine_lines` → horizontal price levels drawn by indicators (deduplicated, sorted high→low); `horizontal_levels` includes stale history, `current_levels` is the subset reaching the latest bar
 2. `data_get_pine_labels` → text annotations with prices (e.g., "PDH 24550", "Bias Long ✓")
-3. `data_get_pine_tables` → table data formatted as rows (e.g., session stats, analytics dashboards)
+3. `data_get_pine_tables` → table data formatted as rows (e.g., session stats, analytics dashboards); blank rows are kept so indices match
 4. `data_get_pine_boxes` → price zones / ranges as {high, low} pairs
 
 Use `study_filter` parameter to target a specific indicator by name substring (e.g., `study_filter: "Profiler"`).
