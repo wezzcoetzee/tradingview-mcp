@@ -34,8 +34,10 @@ If you're unsure whether a feature fits, open an issue to discuss before submitt
 bun install
 bun run test        # offline test suite (no TradingView needed)
 bun run test:live   # live e2e suite (requires TradingView running)
-tv status           # verify CDP connection (TradingView must be running)
+bun run tv status   # verify CDP connection (TradingView must be running)
 ```
+
+The server and CLI are TypeScript run directly by Bun. Node cannot run them, so use `bun` (not `npm` or `node`) for every command.
 
 ## Pull Requests
 
