@@ -1,5 +1,5 @@
 ---
-name: chart-analysis-position
+name: position-chart-analysis
 description: Position trading and long-term investing technical analysis on TradingView — weekly and monthly charts, long-term trend structure, major support/resistance, and macro context. Use when the user asks about a ticker's long-term trend, multi-year levels, investment thesis from a chart perspective, or whether something is in a long-term uptrend/downtrend. Examples: "is BTC still in a bull market", "long-term chart on SPY", "where's major support on AAPL", "is gold breaking out", "multi-year trend on QQQ".
 ---
 
