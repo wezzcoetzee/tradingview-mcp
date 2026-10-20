@@ -42,14 +42,14 @@ function mockDeps(responses: any = {}, sequence?: any) {
 }
 
 /** Replay page whose toggles and steps take effect, so verification can pass. */
-function livePage({ started = true, autoplayOn = false, date = 1000, stepsMove = true, stops = true } = {}) {
+function livePage({ started = true, autoplayOn = false, date = 1000, stepsMove = true, stops = true, jumpTo = 5000 } = {}) {
   const state = { started, autoplayOn, date, delay: 1000, stepCalls: 0 };
   const evaluate = async (expr: string) => {
     if (expr.includes('doStep')) { state.stepCalls++; if (stepsMove) state.date += 1; return undefined; }
     if (expr.includes('toggleAutoplay')) { state.autoplayOn = !state.autoplayOn; return undefined; }
     if (expr.includes('changeAutoplayDelay')) { state.delay = Number(/\((\d+)\)/.exec(expr)![1]); return undefined; }
     if (expr.includes('stopReplay')) { if (stops) state.started = false; return undefined; }
-    if (expr.includes('selectDate')) { state.date = 5000; return 'ok'; }
+    if (expr.includes('selectDate')) { state.date = jumpTo; return 'ok'; }
     if (expr.includes('isReplayStarted')) return state.started;
     if (expr.includes('isAutoplayStarted')) return state.autoplayOn;
     if (expr.includes('autoplayDelay')) return state.delay;
@@ -222,11 +222,20 @@ describe('jump()', () => {
     assert.equal(result.current_date, 5000);
   });
 
-  it('fails when the replay date does not change', async () => {
-    const { _deps, state } = livePage({ date: 5000 });
+  it('fails when the replay date does not change to another day', async () => {
+    const { _deps, state } = livePage({ date: 5000, jumpTo: 5000 });
     const result = await jump({ date: '2026-03-15', _deps });
     assert.equal(result.success, false);
     assert.equal(state.date, 5000);
+  });
+
+  it('succeeds when the replay is already on the requested day', async () => {
+    const sameDay = Date.UTC(2026, 2, 15, 13) / 1000;
+    const { _deps } = livePage({ date: sameDay, jumpTo: sameDay });
+    const result = await jump({ date: '2026-03-15', _deps });
+    assert.equal(result.success, true);
+    assert.equal(result.unchanged, true);
+    assert.equal(result.current_date, sameDay);
   });
 
   it('rejects a bad date before any page call', async () => {
