@@ -1,16 +1,16 @@
 /**
  * Core UI automation logic.
  */
-import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
 
 export async function click({ by, value }: any = {}) {
-  const escaped = JSON.stringify(value);
+  const escaped = safeString(value);
   const result = await evaluate(`
     (function() {
       var by = ${JSON.stringify(by)};
       var value = ${escaped};
       var el = null;
-      var esc = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(value) : value.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+      var esc = CSS.escape(value);
       if (by === 'aria-label') el = document.querySelector('[aria-label="' + esc + '"]');
       else if (by === 'data-name') el = document.querySelector('[data-name="' + esc + '"]');
       else if (by === 'text') {
@@ -161,27 +161,48 @@ export async function layoutSwitch({ name }: any = {}) {
   return { success: true, layout: result.name || name, layout_id: result.id, source: result.source, action: 'switched', unsaved_dialog_dismissed: dismissed };
 }
 
-export async function keyboard({ key, modifiers }: any = {}) {
-  const c = await getClient();
-  let mod = 0;
-  if (modifiers) {
-    if (modifiers.includes('alt')) mod |= 1;
-    if (modifiers.includes('ctrl')) mod |= 2;
-    if (modifiers.includes('meta')) mod |= 4;
-    if (modifiers.includes('shift')) mod |= 8;
+const NAMED_KEYS: Record<string, { code: string; vk: number }> = {
+  Enter: { code: 'Enter', vk: 13 }, Escape: { code: 'Escape', vk: 27 }, Tab: { code: 'Tab', vk: 9 },
+  Backspace: { code: 'Backspace', vk: 8 }, Delete: { code: 'Delete', vk: 46 },
+  ArrowUp: { code: 'ArrowUp', vk: 38 }, ArrowDown: { code: 'ArrowDown', vk: 40 },
+  ArrowLeft: { code: 'ArrowLeft', vk: 37 }, ArrowRight: { code: 'ArrowRight', vk: 39 },
+  Space: { code: 'Space', vk: 32 }, ' ': { code: 'Space', vk: 32 },
+  Home: { code: 'Home', vk: 36 }, End: { code: 'End', vk: 35 },
+  PageUp: { code: 'PageUp', vk: 33 }, PageDown: { code: 'PageDown', vk: 34 },
+};
+
+type Modifier = 'alt' | 'ctrl' | 'meta' | 'shift';
+
+/** Resolves the DOM `key`, `code`, Windows virtual key code and typed text for a key name. */
+export function resolveKey(key: string) {
+  const fn = /^F([1-9]|1[0-2])$/.exec(key);
+  if (fn) return { key, code: key, vk: 111 + Number(fn[1]), text: undefined };
+  const named = NAMED_KEYS[key];
+  if (named) {
+    const text = key === 'Enter' ? '\r' : named.code === 'Space' ? ' ' : undefined;
+    return { key: named.code === 'Space' ? ' ' : key, ...named, text };
   }
-  const keyMap = {
-    'Enter': { code: 'Enter', vk: 13 }, 'Escape': { code: 'Escape', vk: 27 }, 'Tab': { code: 'Tab', vk: 9 },
-    'Backspace': { code: 'Backspace', vk: 8 }, 'Delete': { code: 'Delete', vk: 46 },
-    'ArrowUp': { code: 'ArrowUp', vk: 38 }, 'ArrowDown': { code: 'ArrowDown', vk: 40 },
-    'ArrowLeft': { code: 'ArrowLeft', vk: 37 }, 'ArrowRight': { code: 'ArrowRight', vk: 39 },
-    'Space': { code: 'Space', vk: 32 }, 'Home': { code: 'Home', vk: 36 }, 'End': { code: 'End', vk: 35 },
-    'PageUp': { code: 'PageUp', vk: 33 }, 'PageDown': { code: 'PageDown', vk: 34 },
-    'F1': { code: 'F1', vk: 112 }, 'F2': { code: 'F2', vk: 113 }, 'F5': { code: 'F5', vk: 116 },
-  };
-  const mapped = keyMap[key] || { code: 'Key' + key.toUpperCase(), vk: key.toUpperCase().charCodeAt(0) };
-  await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: mod, key, code: mapped.code, windowsVirtualKeyCode: mapped.vk });
-  await c.Input.dispatchKeyEvent({ type: 'keyUp', key, code: mapped.code });
+  if (/^[a-z]$/i.test(key)) return { key, code: 'Key' + key.toUpperCase(), vk: key.toUpperCase().charCodeAt(0), text: key };
+  if (/^[0-9]$/.test(key)) return { key, code: 'Digit' + key, vk: key.charCodeAt(0), text: key };
+  throw new Error(`Unsupported key "${key}". Use a letter, digit, F1-F12, or one of: ${Object.keys(NAMED_KEYS).join(', ')}`);
+}
+
+/** CDP keyDown/keyUp payloads. Both carry the modifiers; text is only sent for printable keys without ctrl/alt/meta. */
+export function keyEvents(key: string, modifiers: Modifier[] = []) {
+  const { text, vk, ...rest } = resolveKey(key);
+  const flags = { alt: 1, ctrl: 2, meta: 4, shift: 8 };
+  const mod = modifiers.reduce((acc, m) => acc | flags[m], 0);
+  const shortcut = modifiers.some(m => m !== 'shift');
+  const base = { ...rest, modifiers: mod, windowsVirtualKeyCode: vk };
+  return [
+    { type: 'keyDown', ...base, ...(text && !shortcut ? { text } : {}) },
+    { type: 'keyUp', ...base },
+  ];
+}
+
+export async function keyboard({ key, modifiers }: { key: string; modifiers?: Modifier[] }) {
+  const c = await getClient();
+  for (const event of keyEvents(key, modifiers)) await c.Input.dispatchKeyEvent(event);
   return { success: true, key, modifiers: modifiers || [] };
 }
 
@@ -195,9 +216,9 @@ export async function hover({ by, value }: any = {}) {
   const coords = await evaluate(`
     (function() {
       var by = ${JSON.stringify(by)};
-      var value = ${JSON.stringify(value)};
+      var value = ${safeString(value)};
       var el = null;
-      var esc = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(value) : value.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+      var esc = CSS.escape(value);
       if (by === 'aria-label') {
         el = document.querySelector('[aria-label="' + esc + '"]');
         if (!el) el = document.querySelector('[aria-label*="' + esc + '"]');
@@ -236,17 +257,23 @@ export async function scroll({ direction, amount }: any = {}) {
   return { success: true, direction, amount: px };
 }
 
+/** CDP mouse events for a click; every press and release carries the same clickCount. */
+export function clickEvents(x: number, y: number, button: 'left' | 'right' | 'middle', clickCount: number) {
+  const buttons = { left: 1, right: 2, middle: 4 }[button];
+  return [
+    { type: 'mousePressed', x, y, button, buttons, clickCount },
+    { type: 'mouseReleased', x, y, button, buttons: 0, clickCount },
+  ];
+}
+
 export async function mouseClick({ x, y, button, double_click }: any = {}) {
   const c = await getClient();
   const btn = button === 'right' ? 'right' : button === 'middle' ? 'middle' : 'left';
-  const btnNum = btn === 'right' ? 2 : btn === 'middle' ? 1 : 0;
   await c.Input.dispatchMouseEvent({ type: 'mouseMoved', x, y });
-  await c.Input.dispatchMouseEvent({ type: 'mousePressed', x, y, button: btn, buttons: btnNum, clickCount: 1 });
-  await c.Input.dispatchMouseEvent({ type: 'mouseReleased', x, y, button: btn });
+  for (const event of clickEvents(x, y, btn, 1)) await c.Input.dispatchMouseEvent(event);
   if (double_click) {
     await new Promise(r => setTimeout(r, 50));
-    await c.Input.dispatchMouseEvent({ type: 'mousePressed', x, y, button: btn, buttons: btnNum, clickCount: 2 });
-    await c.Input.dispatchMouseEvent({ type: 'mouseReleased', x, y, button: btn });
+    for (const event of clickEvents(x, y, btn, 2)) await c.Input.dispatchMouseEvent(event);
   }
   return { success: true, x, y, button: btn, double_click: !!double_click };
 }
@@ -255,7 +282,7 @@ export async function findElement({ query, strategy }: any = {}) {
   const strat = strategy || 'text';
   const results = await evaluate(`
     (function() {
-      var query = ${JSON.stringify(query)};
+      var query = ${safeString(query)};
       var strategy = ${JSON.stringify(strat)};
       var results = [];
       if (strategy === 'css') {
@@ -265,7 +292,7 @@ export async function findElement({ query, strategy }: any = {}) {
           results.push({ tag: els[i].tagName.toLowerCase(), text: (els[i].textContent || '').trim().substring(0, 80), aria_label: els[i].getAttribute('aria-label') || null, data_name: els[i].getAttribute('data-name') || null, x: rect.x, y: rect.y, width: rect.width, height: rect.height, visible: els[i].offsetParent !== null });
         }
       } else if (strategy === 'aria-label') {
-        var qesc = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(query) : query.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+        var qesc = CSS.escape(query);
         var els = document.querySelectorAll('[aria-label*="' + qesc + '"]');
         for (var i = 0; i < Math.min(els.length, 20); i++) {
           var rect = els[i].getBoundingClientRect();
