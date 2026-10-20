@@ -71,7 +71,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 ### "Manage alerts"
 - `alert_create` → set price alert (condition is set in the TradingView dialog; returns `alert_id` once confirmed in `alert_list`)
 - `alert_list` → view active alerts
-- `alert_delete` → remove alerts
+- `alert_delete` → remove alerts by `alert_id` (from `alert_list`) or `delete_all: true`; verified by re-listing
 
 ### "Navigate the UI"
 - `ui_open_panel` → open/close pine-editor, strategy-tester, watchlist, alerts, trading

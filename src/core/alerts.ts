@@ -157,21 +157,60 @@ export async function list() {
   return { success: true, alert_count: result?.alerts?.length || 0, source: 'internal_api', alerts: (result?.alerts || []) as AlertSummary[], error: result?.error as string | undefined };
 }
 
-export async function deleteAlerts({ delete_all }: any = {}) {
-  if (delete_all) {
-    const result = await evaluate(`
-      (function() {
-        var alertBtn = document.querySelector('[data-name="alerts"]');
-        if (alertBtn) alertBtn.click();
-        var header = document.querySelector('[data-name="alerts"]');
-        if (header) {
-          header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 100 }));
-          return { context_menu_opened: true };
-        }
-        return { context_menu_opened: false };
-      })()
-    `);
-    return { success: false, note: 'Alert deletion requires manual confirmation in the TradingView context menu — no alerts were deleted by this call.', context_menu_opened: result?.context_menu_opened || false, source: 'dom_fallback' };
+type AlertId = string | number;
+
+export interface DeleteIO {
+  list: () => Promise<{ alerts: AlertSummary[]; error?: string }>;
+  post: (ids: AlertId[]) => Promise<{ ok: boolean; error?: string }>;
+}
+
+// Endpoint shape inferred, not yet verified against a live account.
+async function postDeleteAlerts(ids: AlertId[]) {
+  const result = await evaluateAsync(`
+    fetch('https://pricealerts.tradingview.com/delete_alerts', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payload: { alert_ids: ${JSON.stringify(ids)} } }),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) { return { ok: data.s === 'ok', error: data.s === 'ok' ? undefined : (data.errmsg || 'Unexpected response') }; })
+      .catch(function(e) { return { ok: false, error: e.message }; })
+  `);
+  return { ok: !!result?.ok, error: result?.error as string | undefined };
+}
+
+/** Deletes alerts by id (or all of them) and confirms by re-listing that they are gone. */
+export async function deleteAlerts(
+  { alert_id, delete_all }: { alert_id?: AlertId | AlertId[]; delete_all?: boolean } = {},
+  io: DeleteIO = { list, post: postDeleteAlerts },
+) {
+  const requested = alert_id === undefined ? [] : [alert_id].flat();
+  if (delete_all && requested.length) {
+    return { success: false, error: 'Pass either alert_id or delete_all, not both' };
   }
-  throw new Error('Individual alert deletion not yet supported. Use delete_all: true.');
+  if (!delete_all && !requested.length) {
+    return { success: false, error: 'Pass alert_id (one or more) or delete_all: true' };
+  }
+
+  const before = await io.list();
+  if (before.error) return { success: false, error: `Cannot delete alerts, alert list unavailable: ${before.error}` };
+
+  const targets = delete_all
+    ? before.alerts.map(a => a.alert_id)
+    : before.alerts.map(a => a.alert_id).filter(id => requested.some(r => String(r) === String(id)));
+  const not_found = requested.filter(r => !targets.some(id => String(id) === String(r)));
+  if (not_found.length) return { success: false, error: 'Alert id not found in alert_list', not_found };
+  if (!targets.length) return { success: true, deleted: [], deleted_count: 0, source: 'internal_api' };
+
+  const posted = await io.post(targets);
+  if (!posted.ok) return { success: false, error: `Delete request failed: ${posted.error}`, requested: targets };
+
+  const after = await io.list();
+  if (after.error) return { success: false, error: `Delete sent but could not verify: ${after.error}`, requested: targets };
+  const remaining = targets.filter(id => after.alerts.some(a => String(a.alert_id) === String(id)));
+  if (remaining.length) {
+    return { success: false, error: 'Delete was sent but some alerts are still in alert_list', remaining };
+  }
+  return { success: true, deleted: targets, deleted_count: targets.length, source: 'internal_api' };
 }

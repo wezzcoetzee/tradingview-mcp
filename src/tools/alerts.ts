@@ -3,6 +3,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { defineTool, zBool, DESTRUCTIVE, READ_ONLY, WRITE } from './_format.js';
 import * as core from '../core/alerts.js';
 
+const alertId = z.union([z.number(), z.string()]);
+
 export function registerAlertTools(server: McpServer) {
   defineTool(server, {
     name: 'alert_create',
@@ -24,11 +26,12 @@ export function registerAlertTools(server: McpServer) {
 
   defineTool(server, {
     name: 'alert_delete',
-    description: 'Delete all alerts or open context menu for deletion',
+    description: 'Delete alerts by id (from alert_list) or all alerts, then verify via alert_list',
     inputSchema: {
-      delete_all: zBool.optional().describe('Delete all alerts'),
+      alert_id: z.union([alertId, z.array(alertId)]).optional().describe('Alert id or ids from alert_list'),
+      delete_all: zBool.optional().describe('Delete every alert (must be explicit)'),
     },
     annotations: DESTRUCTIVE,
-    run: ({ delete_all }) => core.deleteAlerts({ delete_all }),
+    run: ({ alert_id, delete_all }) => core.deleteAlerts({ alert_id, delete_all }),
   });
 }
