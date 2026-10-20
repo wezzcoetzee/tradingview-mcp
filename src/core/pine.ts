@@ -288,6 +288,7 @@ export async function getSource() {
   return { success: true, source, line_count: source.split('\n').length, char_count: source.length };
 }
 
+/** Title of the script in the editor (from its declaration), or null if undeclared. */
 async function readEditorTitle(): Promise<string | null> {
   const source = await evaluate(`
     (function() {
@@ -296,11 +297,6 @@ async function readEditorTitle(): Promise<string | null> {
     })()
   `);
   return typeof source === 'string' ? parseScriptTitle(source) : null;
-}
-
-/** Name of the script currently in the editor (from its declaration title), or null if undeclared. */
-export async function getActiveScriptName() {
-  return readEditorTitle();
 }
 
 /**
