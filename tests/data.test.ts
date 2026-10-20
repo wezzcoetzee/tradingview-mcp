@@ -2,7 +2,8 @@ import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import {
   getQuote, getOhlcv, getTrades, getStrategyResults, getEquity,
-  getPineLabels, getPineTables, getPineLines, horizontalLevels, tableRows,
+  getPineLabels, getPineTables, getPineLines, getPineBoxes, horizontalLevels, tableRows,
+  downsample, summarizeEquity, boxZones, summarizeBars,
 } from '../src/core/data.js';
 import { batchRun } from '../src/core/batch.js';
 import { backoffMs, sleep, pollLoop } from '../src/core/stream.js';
@@ -162,5 +163,91 @@ describe('stream helpers', () => {
     let calls = 0;
     await pollLoop(async () => { calls++; throw new Error('boom'); }, { interval: 1, maxErrors: 3 });
     assert.equal(calls, 3);
+  });
+});
+
+describe('size controls', () => {
+  const points = Array.from({ length: 1000 }, (_, i) => ({ time: i, equity: 100 + (i % 7) }));
+
+  it('downsample keeps first and last and respects the cap', () => {
+    const out = downsample(points, 10);
+    assert.equal(out.length, 10);
+    assert.equal(out[0], points[0]);
+    assert.equal(out[9], points[999]);
+    assert.equal(downsample(points.slice(0, 3), 10).length, 3);
+    assert.deepEqual(downsample(points, 1), [points[999]]);
+  });
+
+  it('summarizeEquity reports first, last, min and max', () => {
+    const s = summarizeEquity([{ time: 1, equity: 5 }, { time: 2, equity: 9 }, { time: 3, equity: 2 }, { time: 4, equity: 6 }]);
+    assert.equal(s?.first.time, 1);
+    assert.equal(s?.last.time, 4);
+    assert.equal(s?.min.equity, 2);
+    assert.equal(s?.max.equity, 9);
+    assert.equal(summarizeEquity([{ time: 1 }]), null);
+  });
+
+  it('getEquity downsamples by default cap, honours max_points, and summary drops the points', async () => {
+    const _deps = mock({ data: points, source: 'internal_api' });
+    const capped = await getEquity({ max_points: 25, _deps });
+    assert.equal(capped.data_points, 1000);
+    assert.equal(capped.showing, 25);
+    assert.equal(capped.data.length, 25);
+    assert.equal((await getEquity({ _deps })).data.length, 200);
+    const only = await getEquity({ summary: true, _deps });
+    assert.deepEqual(only.data, []);
+    assert.equal(only.summary?.max.equity, 106);
+  });
+
+  it('boxZones dedupes, keeps the newest, caps, and sorts high to low', () => {
+    const box = (y1: number, y2: number) => ({ id: `${y1}-${y2}`, raw: { y1, y2 } });
+    const items = [box(1, 2), box(5, 4), box(3, 3.5), box(2, 1), box(8, 9)];
+    assert.deepEqual(boxZones(items), [{ high: 9, low: 8 }, { high: 5, low: 4 }, { high: 3.5, low: 3 }, { high: 2, low: 1 }]);
+    assert.deepEqual(boxZones(items, 2), [{ high: 9, low: 8 }, { high: 2, low: 1 }]);
+  });
+
+  it('getPineBoxes applies max_levels to zones and verbose boxes', async () => {
+    const items = [1, 2, 3, 4].map(n => ({ id: n, raw: { y1: n, y2: n + 0.5 } }));
+    const _deps = graphics([{ name: 'Alpha Levels', count: 4, items }]);
+    const res = await getPineBoxes({ max_levels: 2, verbose: true, _deps });
+    assert.equal(res.studies[0].zones.length, 2);
+    assert.equal(res.studies[0].all_boxes.length, 2);
+  });
+});
+
+describe('ohlcv range and summary', () => {
+  const bar = (time: number) => ({ time, open: 10, high: 12, low: 9, close: 11, volume: 100 });
+
+  it('summary carries symbol, resolution and ISO period', () => {
+    const s = summarizeBars([bar(0), bar(86400)], { symbol: 'BTCUSD', resolution: '60' });
+    assert.equal(s.symbol, 'BTCUSD');
+    assert.equal(s.resolution, '60');
+    assert.equal(s.period.from_iso, '1970-01-01T00:00:00.000Z');
+    assert.equal(s.period.to_iso, '1970-01-02T00:00:00.000Z');
+  });
+
+  it('puts from/to into the page expression and rejects an inverted range', async () => {
+    let expression = '';
+    const _deps = { evaluate: async (e: string) => { expression = e; return { bars: [bar(5)], total_bars: 1, symbol: 'X', resolution: 'D' }; } };
+    const res = await getOhlcv({ from: 100, to: 200, _deps });
+    assert.ok(expression.includes('v[0] > 200') && expression.includes('v[0] < 100'));
+    assert.equal(res.symbol, 'X');
+    await assert.rejects(getOhlcv({ from: 200, to: 100, _deps }), /must not be after/);
+  });
+
+  it('explains an empty range instead of a loading error', async () => {
+    await assert.rejects(getOhlcv({ from: 1, to: 2, _deps: mock({ bars: [] }) }), /No loaded bars in the requested/);
+  });
+});
+
+describe('strategy study_filter', () => {
+  it('is lowercased into the page expression for all strategy readers', async () => {
+    const seen: string[] = [];
+    const _deps = { evaluate: async (e: string) => { seen.push(e); return { error: 'none' }; } };
+    await getStrategyResults({ study_filter: 'MyStrat', _deps });
+    await getTrades({ study_filter: 'MyStrat', _deps });
+    await getEquity({ study_filter: 'MyStrat', _deps });
+    assert.equal(seen.length, 3);
+    for (const e of seen) assert.ok(e.includes('findStrategy(sources, "mystrat")'));
   });
 });

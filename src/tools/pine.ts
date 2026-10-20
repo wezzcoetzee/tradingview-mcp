@@ -6,9 +6,14 @@ import * as core from '../core/pine.js';
 export function registerPineTools(server: McpServer) {
   defineTool(server, {
     name: 'pine_get_source',
-    description: 'Get current Pine Script source code from the editor',
+    description: 'Get current Pine Script source code from the editor. Returns total_lines and char_count; use from_line/to_line/max_chars to read a part of a large script.',
+    inputSchema: {
+      from_line: z.coerce.number().int().positive().optional().describe('First line to return, 1-based (default 1)'),
+      to_line: z.coerce.number().int().positive().optional().describe('Last line to return, 1-based and inclusive (default: last line)'),
+      max_chars: z.coerce.number().int().nonnegative().optional().describe('Cut the returned source to this many characters; truncated is true when it was cut'),
+    },
     annotations: READ_ONLY,
-    run: () => core.getSource(),
+    run: ({ from_line, to_line, max_chars }) => core.getSource({ from_line, to_line, max_chars }),
   });
 
   defineTool(server, {
@@ -44,9 +49,12 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_get_console',
-    description: 'Read Pine Script console/log output (compile messages, log.info(), errors)',
+    description: 'Read Pine Script console/log output (compile messages, log.info(), errors). Duplicates are removed and only the newest entries are returned; total_entries is the count before limiting.',
+    inputSchema: {
+      limit: z.coerce.number().int().nonnegative().optional().describe('Max entries returned, newest kept (default 50)'),
+    },
     annotations: READ_ONLY,
-    run: () => core.getConsole(),
+    run: ({ limit }) => core.getConsole({ limit }),
   });
 
   defineTool(server, {
