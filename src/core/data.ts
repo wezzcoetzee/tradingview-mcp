@@ -13,18 +13,23 @@ const BARS_PATH = KNOWN_PATHS.mainSeriesBars;
 
 // In-page helper: locate the first strategy data source on the chart.
 // Used by getStrategyResults / getTrades / getEquity to avoid drift.
+// A non-empty filter picks the strategy whose name contains it (case-insensitive).
 const FIND_STRATEGY_JS = `
-  function findStrategy(sources) {
+  function findStrategy(sources, filter) {
     for (var i = 0; i < sources.length; i++) {
       var s = sources[i];
       if (!s || !s.metaInfo) continue;
       var mi = s.metaInfo();
       if (!mi || mi.is_price_study !== false) continue;
+      if (filter && (mi.description || mi.shortDescription || '').toLowerCase().indexOf(filter) === -1) continue;
       if (s.reportData || s.performance || s.ordersData || s.equityData) return s;
     }
     return null;
   }
 `;
+
+/** In-page literal for a strategy name filter, lowercased to match findStrategy. */
+const strategyFilter = (filter?: string) => safeString((filter ?? '').toLowerCase());
 
 const ALLOWED_GRAPHICS_COLLECTIONS = new Set(['dwglines', 'dwglabels', 'dwgboxes', 'dwgtablecells']);
 const ALLOWED_GRAPHICS_MAP_KEYS = new Set(['lines', 'labels', 'boxes', 'tableCells']);
@@ -132,7 +137,9 @@ export function tableRows(items: GraphicsItem[]): { rows: string[] }[] {
 
 interface Bar { time: number; open: number; high: number; low: number; close: number; volume: number }
 
-export function summarizeBars(bars: Bar[]) {
+const isoSeconds = (t: number) => new Date(t * 1000).toISOString();
+
+export function summarizeBars(bars: Bar[], chart?: { symbol: string; resolution: string }) {
   let high = -Infinity, low = Infinity, volSum = 0;
   for (const b of bars) {
     if (b.high > high) high = b.high;
@@ -143,7 +150,8 @@ export function summarizeBars(bars: Bar[]) {
   const last = bars[bars.length - 1];
   return {
     success: true, bar_count: bars.length,
-    period: { from: first.time, to: last.time },
+    ...chart,
+    period: { from: first.time, to: last.time, from_iso: isoSeconds(first.time), to_iso: isoSeconds(last.time) },
     open: first.open, close: last.close,
     high, low,
     range: high - low,
@@ -156,29 +164,38 @@ export function summarizeBars(bars: Bar[]) {
   };
 }
 
-export async function getOhlcv({ count, summary, _deps }: any = {}) {
+export async function getOhlcv({ count, summary, from, to, _deps }: any = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const limit = Math.min(Math.max(1, Math.floor(count == null ? 100 : requireFinite(count, 'count'))), MAX_OHLCV_BARS);
+  const fromTime = from == null ? -Infinity : requireFinite(from, 'from');
+  const toTime = to == null ? Infinity : requireFinite(to, 'to');
+  if (fromTime > toTime) throw new Error(`from (${fromTime}) must not be after to (${toTime})`);
+  // Walk back from the newest loaded bar so the result is the latest `limit` bars inside [from, to].
   const data = await ev(`
     (function() {
       var bars = ${BARS_PATH};
       if (!bars || typeof bars.lastIndex !== 'function') return null;
       var result = [];
-      var end = bars.lastIndex();
-      var start = Math.max(bars.firstIndex(), end - ${limit} + 1);
-      for (var i = start; i <= end; i++) {
+      var first = bars.firstIndex();
+      for (var i = bars.lastIndex(); i >= first && result.length < ${limit}; i--) {
         var v = bars.valueAt(i);
-        if (v) result.push({time: v[0], open: v[1], high: v[2], low: v[3], close: v[4], volume: v[5] || 0});
+        if (!v) continue;
+        if (v[0] > ${toTime === Infinity ? 'Infinity' : toTime}) continue;
+        if (v[0] < ${fromTime === -Infinity ? '-Infinity' : fromTime}) break;
+        result.push({time: v[0], open: v[1], high: v[2], low: v[3], close: v[4], volume: v[5] || 0});
       }
-      return {bars: result, total_bars: bars.size(), source: 'direct_bars'};
+      result.reverse();
+      return {bars: result, total_bars: bars.size(), source: 'direct_bars', symbol: ${CHART_API}.symbol(), resolution: ${CHART_API}.resolution()};
     })()
   `);
 
   if (!data || !data.bars || data.bars.length === 0) {
-    throw new Error('Could not extract OHLCV data. The chart may still be loading.');
+    throw new Error(from != null || to != null
+      ? 'No loaded bars in the requested from/to range. Only bars already loaded on the chart can be read; scroll or zoom there first.'
+      : 'Could not extract OHLCV data. The chart may still be loading.');
   }
-  if (summary) return summarizeBars(data.bars);
-  return { success: true, bar_count: data.bars.length, total_available: data.total_bars, source: data.source, bars: data.bars };
+  if (summary) return summarizeBars(data.bars, { symbol: data.symbol, resolution: data.resolution });
+  return { success: true, symbol: data.symbol, resolution: data.resolution, bar_count: data.bars.length, total_available: data.total_bars, source: data.source, bars: data.bars };
 }
 
 const RESOLVE_INPUTS_JS = `
@@ -244,7 +261,7 @@ export async function getIndicator({ entity_id, _deps }: any = {}) {
   return { success: true, entity_id, visible: data?.visible, inputs };
 }
 
-export async function getStrategyResults({ _deps }: any = {}) {
+export async function getStrategyResults({ study_filter, _deps }: any = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const results = await ev(`
     (function() {
@@ -252,8 +269,8 @@ export async function getStrategyResults({ _deps }: any = {}) {
       try {
         var chart = ${CHART_API}._chartWidget;
         var sources = chart.model().model().dataSources();
-        var strat = findStrategy(sources);
-        if (!strat) return {metrics: {}, source: 'internal_api', error: 'No strategy found on chart. Add a strategy indicator first.'};
+        var strat = findStrategy(sources, ${strategyFilter(study_filter)});
+        if (!strat) return {metrics: {}, source: 'internal_api', error: 'No strategy found on chart. Add a strategy indicator first (or check study_filter).'};
         var metrics = {};
         if (strat.reportData) {
           var rd = typeof strat.reportData === 'function' ? strat.reportData() : strat.reportData;
@@ -275,7 +292,7 @@ export async function getStrategyResults({ _deps }: any = {}) {
   return { success: true, metric_count: Object.keys(results?.metrics || {}).length, source: results?.source, metrics: results?.metrics || {} };
 }
 
-export async function getTrades({ max_trades, offset, _deps }: any = {}) {
+export async function getTrades({ study_filter, max_trades, offset, _deps }: any = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const limit = Math.max(1, Math.min(Math.floor(max_trades == null ? MAX_TRADES : requireFinite(max_trades, 'max_trades')), MAX_TRADES));
   // Without an offset, return the latest trades; with one, page forward from the oldest.
@@ -286,7 +303,7 @@ export async function getTrades({ max_trades, offset, _deps }: any = {}) {
       try {
         var chart = ${CHART_API}._chartWidget;
         var sources = chart.model().model().dataSources();
-        var strat = findStrategy(sources);
+        var strat = findStrategy(sources, ${strategyFilter(study_filter)});
         if (!strat) return {error: 'No strategy found on chart.'};
         var orders = null;
         if (strat.ordersData) { orders = typeof strat.ordersData === 'function' ? strat.ordersData() : strat.ordersData; if (orders && typeof orders.value === 'function') orders = orders.value(); }
@@ -320,7 +337,24 @@ export async function getTrades({ max_trades, offset, _deps }: any = {}) {
   return { success: true, trade_count: trades.trades.length, total: trades.total, offset: trades.offset, source: trades.source, trades: trades.trades };
 }
 
-export async function getEquity({ _deps }: any = {}) {
+const DEFAULT_EQUITY_POINTS = 200;
+
+/** At most `max` points, evenly spaced, always keeping the first and last. */
+export function downsample<T>(points: readonly T[], max: number): T[] {
+  if (points.length <= max) return [...points];
+  if (max <= 1) return points.slice(-1);
+  return Array.from({ length: max }, (_, i) => points[Math.round((i * (points.length - 1)) / (max - 1))]);
+}
+
+/** First, last, min and max of the numeric `equity` field; null when no point carries one. */
+export function summarizeEquity(points: readonly { time?: number; equity?: unknown }[]) {
+  const pts = points.filter((p): p is { time?: number; equity: number } => typeof p?.equity === 'number');
+  if (pts.length === 0) return null;
+  const byEquity = [...pts].sort((a, b) => a.equity - b.equity);
+  return { first: pts[0], last: pts[pts.length - 1], min: byEquity[0], max: byEquity[byEquity.length - 1] };
+}
+
+export async function getEquity({ study_filter, max_points, summary, _deps }: any = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const equity = await ev(`
     (function() {
@@ -328,7 +362,7 @@ export async function getEquity({ _deps }: any = {}) {
       try {
         var chart = ${CHART_API}._chartWidget;
         var sources = chart.model().model().dataSources();
-        var strat = findStrategy(sources);
+        var strat = findStrategy(sources, ${strategyFilter(study_filter)});
         if (!strat) return {data: [], source: 'internal_api', error: 'No strategy found on chart.'};
         var data = [];
         if (strat.equityData) {
@@ -357,7 +391,13 @@ export async function getEquity({ _deps }: any = {}) {
     })()
   `);
   if (equity?.error) return { success: false, error: equity.error };
-  return { success: true, data_points: equity?.data?.length || 0, source: equity?.source, data: equity?.data || [], equity_summary: equity?.equity_summary, note: equity?.note };
+  const data: { time?: number; equity?: unknown }[] = equity?.data || [];
+  const limit = Math.max(1, Math.floor(max_points == null ? DEFAULT_EQUITY_POINTS : requireFinite(max_points, 'max_points')));
+  const shown = summary ? [] : downsample(data, limit);
+  return {
+    success: true, data_points: data.length, showing: shown.length, source: equity?.source,
+    summary: summarizeEquity(data), data: shown, equity_summary: equity?.equity_summary, note: equity?.note,
+  };
 }
 
 export async function getQuote({ symbol, _deps }: any = {}) {
@@ -507,7 +547,7 @@ export async function getPineLines({ study_filter, verbose, max_levels, _deps }:
   const studies = raw.map(s => {
     const horizontal_levels = horizontalLevels(s.items, max_levels ?? MAX_LEVELS);
     const result: any = { name: s.name, total_lines: s.count, horizontal_levels };
-    if (verbose) result.all_lines = s.items.map(({ id, raw: v }) => ({ id, y1: v.y1 ?? null, y2: v.y2 ?? null, x1: v.x1, x2: v.x2, horizontal: v.y1 === v.y2, style: v.st, width: v.w, color: v.ci }));
+    if (verbose) result.all_lines = s.items.slice(-(max_levels ?? MAX_LEVELS)).map(({ id, raw: v }) => ({ id, y1: v.y1 ?? null, y2: v.y2 ?? null, x1: v.x1, x2: v.x2, horizontal: v.y1 === v.y2, style: v.st, width: v.w, color: v.ci }));
     return result;
   });
   return { success: true, study_count: studies.length, studies, ...notes };
@@ -535,22 +575,31 @@ export async function getPineTables({ study_filter, _deps }: any = {}) {
   return { success: true, study_count: studies.length, studies, ...notes };
 }
 
-export async function getPineBoxes({ study_filter, verbose, _deps }: any = {}) {
+/** Distinct {high, low} zones, newest boxes first, capped, then sorted high to low. */
+export function boxZones(items: GraphicsItem[], maxZones = MAX_LEVELS): { high: number; low: number }[] {
+  const seen = new Set<string>();
+  const zones: { high: number; low: number }[] = [];
+  for (let i = items.length - 1; i >= 0 && zones.length < maxZones; i--) {
+    const { y1, y2 } = items[i].raw;
+    if (y1 == null || y2 == null) continue;
+    const high = Math.max(y1, y2), low = Math.min(y1, y2);
+    const key = `${high}:${low}`;
+    if (!seen.has(key)) { seen.add(key); zones.push({ high, low }); }
+  }
+  return zones.sort((a, b) => b.high - a.high);
+}
+
+export async function getPineBoxes({ study_filter, verbose, max_levels, _deps }: any = {}) {
   const { studies: raw, notes } = await readGraphics('dwgboxes', 'boxes', study_filter, _deps?.evaluate);
+  const limit = Math.max(0, max_levels ?? MAX_LEVELS);
   const studies = raw.map(s => {
-    const zones = [];
-    const seen = {};
-    const allBoxes = [];
-    for (const item of s.items) {
-      const v = item.raw;
-      const high = v.y1 != null && v.y2 != null ? Math.max(v.y1, v.y2) : null;
-      const low = v.y1 != null && v.y2 != null ? Math.min(v.y1, v.y2) : null;
-      if (verbose) allBoxes.push({ id: item.id, high, low, x1: v.x1, x2: v.x2, borderColor: v.c, bgColor: v.bc });
-      if (high != null && low != null) { const key = high + ':' + low; if (!seen[key]) { zones.push({ high, low }); seen[key] = true; } }
+    const result: any = { name: s.name, total_boxes: s.count, zones: boxZones(s.items, limit) };
+    if (verbose) {
+      result.all_boxes = s.items.slice(-limit).map(({ id, raw: v }) => {
+        const bounded = v.y1 != null && v.y2 != null;
+        return { id, high: bounded ? Math.max(v.y1, v.y2) : null, low: bounded ? Math.min(v.y1, v.y2) : null, x1: v.x1, x2: v.x2, borderColor: v.c, bgColor: v.bc };
+      });
     }
-    zones.sort((a, b) => b.high - a.high);
-    const result: any = { name: s.name, total_boxes: s.count, zones };
-    if (verbose) result.all_boxes = allBoxes;
     return result;
   });
   return { success: true, study_count: studies.length, studies, ...notes };
