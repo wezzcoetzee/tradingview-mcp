@@ -1,16 +1,11 @@
 /**
  * Core batch execution logic.
  */
-import { evaluate as _evaluate, getClient, getChartApi as _getChartApi, getChartCollection as _getChartCollection, safeString } from '../connection.js';
+import { evaluate as _evaluate, getChartApi as _getChartApi, getChartCollection as _getChartCollection, safeString } from '../connection.js';
 import { waitForChartReady as _waitForChartReady } from '../wait.js';
 import { getOhlcv } from './data.js';
-import { writeFileSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { sanitizeFilename } from './capture.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCREENSHOT_DIR = join(dirname(dirname(__dirname)), 'screenshots');
+import { captureScreenshot as _captureScreenshot } from './capture.js';
+import type { ReportProgress } from './progress.js';
 
 export const BATCH_ACTIONS = ['screenshot', 'get_ohlcv', 'get_strategy_results'] as const;
 export type BatchAction = (typeof BATCH_ACTIONS)[number];
@@ -20,7 +15,7 @@ const CHART_STATE = `(function() {
   return { symbol: chart.symbol(), resolution: chart.resolution() };
 })()`;
 
-export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_count, _deps }: any = {}) {
+export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_count, onProgress, _deps }: any = {}) {
   if (!BATCH_ACTIONS.includes(action)) {
     throw new Error(`Unknown batch action "${action}". Use one of: ${BATCH_ACTIONS.join(', ')}`);
   }
@@ -29,6 +24,8 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
   const tfs = timeframes && timeframes.length > 0 ? timeframes : [null];
   const delay = delay_ms ?? 2000;
   const results = [];
+  const total = symbols.length * tfs.length;
+  const progress: ReportProgress | undefined = onProgress;
 
   // setSymbol/setResolution live on the chart collection, or the chart API as a fallback.
   let chartPath: string | undefined;
@@ -57,14 +54,9 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
 
           let actionResult;
           if (action === 'screenshot') {
-            mkdirSync(SCREENSHOT_DIR, { recursive: true });
-            const client = await getClient();
-            const { data } = await client.Page.captureScreenshot({ format: 'png' });
             const ts = new Date().toISOString().replace(/[:.]/g, '-');
-            const fname = sanitizeFilename(`batch_${symbol}_${tf || 'default'}_${ts}`) + '.png';
-            const filePath = join(SCREENSHOT_DIR, fname);
-            writeFileSync(filePath, Buffer.from(data, 'base64'));
-            actionResult = { file_path: filePath };
+            const shot = await (_deps?.captureScreenshot || _captureScreenshot)({ filename: `batch_${symbol}_${tf || 'default'}_${ts}` });
+            actionResult = { file_path: shot.file_path };
           } else if (action === 'get_ohlcv') {
             actionResult = await getOhlcv({ count: ohlcv_count, summary: true, _deps: { evaluate } });
           } else {
@@ -89,6 +81,7 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
         } catch (err) {
           results.push({ ...combo, success: false, error: err.message });
         }
+        await progress?.(results.length, total);
       }
     }
   } finally {
