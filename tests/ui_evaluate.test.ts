@@ -5,7 +5,15 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { uiEvaluate } from '../src/core/ui.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerUiTools } from '../src/tools/ui.js';
+
+function registeredUiTools() {
+  const registered: string[] = [];
+  const server = { registerTool: (name: string) => registered.push(name) };
+  registerUiTools(server as unknown as McpServer);
+  return registered;
+}
 
 describe('ui_evaluate — env-gated', () => {
   let prev;
@@ -27,17 +35,13 @@ describe('ui_evaluate — env-gated', () => {
 
   it('does not register the ui_evaluate tool when env flag is unset', () => {
     delete process.env.TRADINGVIEW_MCP_ALLOW_EVAL;
-    const registered = [];
-    const server = { tool: (name) => registered.push(name) };
-    registerUiTools(server);
+    const registered = registeredUiTools();
     assert.ok(!registered.includes('ui_evaluate'), 'ui_evaluate should not be registered without the env flag');
   });
 
   it('registers the ui_evaluate tool when TRADINGVIEW_MCP_ALLOW_EVAL=1', () => {
     process.env.TRADINGVIEW_MCP_ALLOW_EVAL = '1';
-    const registered = [];
-    const server = { tool: (name) => registered.push(name) };
-    registerUiTools(server);
+    const registered = registeredUiTools();
     assert.ok(registered.includes('ui_evaluate'), 'ui_evaluate should be registered with the env flag');
   });
 });
