@@ -5,7 +5,7 @@
  * Run: node --test tests/pine_analyze.test.js
  */
 
-import { describe, it } from 'node:test';
+import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 
 // Extracted analyze function matching the tool's logic

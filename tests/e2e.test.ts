@@ -2,7 +2,7 @@
  * Comprehensive E2E tests for all 70 TradingView MCP tools.
  * Requires TradingView Desktop running with --remote-debugging-port=9222
  *
- * Run: node --test tests/e2e.test.js
+ * Run: bun run test:live
  *
  * Coverage: 70+ tests across 12 tool modules
  * - Health & Connection (4 tools)
@@ -19,7 +19,7 @@
  * - Capture (1 tool)
  */
 
-import { describe, it, before, after } from 'node:test';
+import { describe, it, beforeAll as before, afterAll as after } from 'bun:test';
 import assert from 'node:assert/strict';
 import CDP from 'chrome-remote-interface';
 
@@ -61,7 +61,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('TradingView MCP — Full E2E (70 tools)', () => {
+// Auto-skip when TradingView isn't reachable so the suite stays green offline.
+const tvReachable = await CDP.List({ host: 'localhost', port: 9222 }).then(() => true, () => false);
+
+describe.skipIf(!tvReachable)('TradingView MCP — Full E2E (70 tools)', () => {
 
   before(async () => {
     try {

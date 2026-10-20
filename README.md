@@ -361,10 +361,10 @@ The key flag: `--remote-debugging-port=9222`
 
 ```bash
 # Offline suite (no TradingView needed)
-bun run test:unit
+bun run test
 
-# Full suite — requires TradingView running with --remote-debugging-port=9222
-bun test
+# Live e2e suite — requires TradingView running with --remote-debugging-port=9222
+bun run test:live
 ```
 
 Comprehensive test suite covering: tool wiring, Pine Script static analysis, server-side compilation, drawing/replay flows, sanitization, and CLI routing.

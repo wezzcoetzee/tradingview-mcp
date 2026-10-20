@@ -32,8 +32,8 @@ If you're unsure whether a feature fits, open an issue to discuss before submitt
 
 ```bash
 bun install
-bun run test:unit   # offline test suite (no TradingView needed)
-bun test            # full suite (requires TradingView running)
+bun run test        # offline test suite (no TradingView needed)
+bun run test:live   # live e2e suite (requires TradingView running)
 tv status           # verify CDP connection (TradingView must be running)
 ```
 
@@ -41,5 +41,5 @@ tv status           # verify CDP connection (TradingView must be running)
 
 - Keep changes focused — one feature or fix per PR
 - Add tests for new functionality where possible
-- Ensure `bun run test:unit` passes
+- Ensure `bun run test` passes
 - Test against a live TradingView Desktop instance before submitting
