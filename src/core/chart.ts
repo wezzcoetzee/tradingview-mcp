@@ -142,7 +142,16 @@ export async function getVisibleRange() {
   return { success: true, visible_range: result.visible_range, bars_range: result.bars_range };
 }
 
-interface ZoomResult { found: boolean; loaded_from: number | null; loaded_to: number | null }
+interface LoadedBars { loaded_from: number | null; loaded_to: number | null }
+
+type ZoomResult =
+  | ({ found: false } & LoadedBars)
+  /** zoomed_* are the times of the first and last loaded bars inside the requested range. */
+  | ({ found: true; zoomed_from: number; zoomed_to: number } & LoadedBars);
+
+type FoundZoom = Extract<ZoomResult, { found: true }>;
+
+interface TimeRange { from: number; to: number }
 
 /** Zoom to the loaded bars inside [from, to]; does nothing when no loaded bar falls in the range. */
 async function zoomToTimeRange(evaluate: (expr: string) => Promise<any>, from: number, to: number): Promise<ZoomResult> {
@@ -155,15 +164,16 @@ async function zoomToTimeRange(evaluate: (expr: string) => Promise<any>, from: n
       var startIdx = bars.firstIndex();
       var endIdx = bars.lastIndex();
       var first = bars.valueAt(startIdx), last = bars.valueAt(endIdx);
-      var fromIdx = -1, toIdx = -1;
+      var fromIdx = -1, toIdx = -1, zoomedFrom = null, zoomedTo = null;
       for (var i = startIdx; i <= endIdx; i++) {
         var v = bars.valueAt(i);
         if (!v || v[0] < ${from} || v[0] > ${to}) continue;
-        if (fromIdx < 0) fromIdx = i;
+        if (fromIdx < 0) { fromIdx = i; zoomedFrom = v[0]; }
         toIdx = i;
+        zoomedTo = v[0];
       }
       if (fromIdx >= 0) ts.zoomToBarsRange(fromIdx, toIdx);
-      return { found: fromIdx >= 0, loaded_from: first ? first[0] : null, loaded_to: last ? last[0] : null };
+      return { found: fromIdx >= 0, loaded_from: first ? first[0] : null, loaded_to: last ? last[0] : null, zoomed_from: zoomedFrom, zoomed_to: zoomedTo };
     })()
   `);
 }
@@ -178,21 +188,46 @@ function notInLoadedRange(requested: object, zoom: ZoomResult) {
   };
 }
 
+/** Set when the request reaches past the loaded bars, so the chart zoomed to only a subset of it. */
+function partialLoadFlag(requested: TimeRange, { loaded_from, loaded_to }: LoadedBars) {
+  if (loaded_from === null || loaded_to === null) return {};
+  const partial = requested.from < loaded_from || requested.to > loaded_to;
+  return partial ? { partially_loaded: true, loaded: { from: loaded_from, to: loaded_to } } : {};
+}
+
+/**
+ * Wait until the visible range covers the bars we zoomed to, with each edge within
+ * max(10% of the span, 3 bars) of them. The chart pads the edges, and sparse D/W/M bars make a fixed floor too tight.
+ */
+async function waitForVisibleRange(
+  zoom: FoundZoom,
+  resolution: string,
+  evaluate: (expr: string) => Promise<any>,
+  waitOpts: object,
+) {
+  const expected: TimeRange = { from: zoom.zoomed_from, to: zoom.zoomed_to };
+  const tolerance = Math.max((expected.to - expected.from) * 0.1, 3 * secondsPerBar(resolution));
+  const wait = await waitFor<TimeRange>(
+    `(function() { var r = ${CHART_API}.getVisibleRange(); return { from: r.from, to: r.to }; })()`,
+    (r) =>
+      r.from <= expected.from && expected.from - r.from <= tolerance &&
+      r.to >= expected.to && r.to - expected.to <= tolerance,
+    { ...waitOpts, evaluate },
+  );
+  return { ...wait, expected };
+}
+
 export async function setVisibleRange({ from, to, _deps }: any = {}) {
-  const { evaluate } = _resolve(_deps);
-  const f = requireFinite(from, 'from');
-  const t = requireFinite(to, 'to');
-  const zoom = await zoomToTimeRange(evaluate, f, t);
-  if (!zoom.found) return notInLoadedRange({ from, to }, zoom);
-  await new Promise(r => setTimeout(r, 500));
-  const actual = await evaluate(`
-    (function() {
-      var chart = ${CHART_API};
-      try { var r = chart.getVisibleRange(); return { from: r.from || 0, to: r.to || 0 }; }
-      catch(e) { return { from: 0, to: 0, error: e.message }; }
-    })()
-  `);
-  return { success: true, requested: { from, to }, actual: actual || { from: 0, to: 0 } };
+  const { evaluate, waitOpts } = _resolve(_deps);
+  const requested: TimeRange = { from: requireFinite(from, 'from'), to: requireFinite(to, 'to') };
+  const zoom = await zoomToTimeRange(evaluate, requested.from, requested.to);
+  if (!zoom.found) return notInLoadedRange(requested, zoom);
+  const resolution = await evaluate(`${CHART_API}.resolution()`);
+  const { ok, value, expected } = await waitForVisibleRange(zoom, resolution, evaluate, waitOpts);
+  if (!ok) {
+    return { success: false, error: 'Visible range did not settle on the requested bars', requested, expected, seen: value ?? null };
+  }
+  return { success: true, requested, actual: value, ...partialLoadFlag(requested, zoom) };
 }
 
 const UNIT_SECONDS = { S: 1, D: 86400, W: 604800, M: 2592000 };
@@ -208,7 +243,7 @@ export function secondsPerBar(resolution: string): number {
 }
 
 export async function scrollToDate({ date, _deps }: any = {}) {
-  const { evaluate } = _resolve(_deps);
+  const { evaluate, waitOpts } = _resolve(_deps);
   let timestamp: number;
   if (/^\d+$/.test(date)) {
     // 13-digit values are milliseconds
@@ -225,8 +260,11 @@ export async function scrollToDate({ date, _deps }: any = {}) {
 
   const zoom = await zoomToTimeRange(evaluate, from, to);
   if (!zoom.found) return notInLoadedRange({ date, centered_on: timestamp, window: { from, to } }, zoom);
-  await new Promise(r => setTimeout(r, 500));
-  return { success: true, date, centered_on: timestamp, resolution, window: { from, to } };
+  const { ok, value, expected } = await waitForVisibleRange(zoom, resolution, evaluate, waitOpts);
+  if (!ok) {
+    return { success: false, error: 'Visible range did not settle on the requested bars', date, expected, seen: value ?? null };
+  }
+  return { success: true, date, centered_on: timestamp, resolution, window: { from, to }, ...partialLoadFlag({ from, to }, zoom) };
 }
 
 export async function symbolInfo() {

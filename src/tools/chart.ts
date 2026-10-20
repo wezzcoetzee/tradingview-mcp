@@ -63,7 +63,7 @@ export function registerChartTools(server: McpServer) {
 
   defineTool(server, {
     name: 'chart_set_visible_range',
-    description: 'Zoom the chart to a specific date range (unix timestamps)',
+    description: 'Zoom the chart to a specific date range (unix timestamps). Returns partially_loaded: true with the loaded from/to when only part of the range has loaded bars',
     inputSchema: {
       from: z.coerce.number().describe('Start of range (unix timestamp in seconds)'),
       to: z.coerce.number().describe('End of range (unix timestamp in seconds)'),

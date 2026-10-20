@@ -243,7 +243,8 @@ describe('chart.js — sanitized evaluate calls', () => {
     const { _deps, evaluate } = mockDeps();
     _deps.evaluate = (async (expr: string) => {
       evaluate.calls.push(expr);
-      return expr.includes('zoomToBarsRange') ? { found: true, loaded_from: 0, loaded_to: 2e9 } : undefined;
+      if (expr.includes('zoomToBarsRange')) return { found: true, loaded_from: 0, loaded_to: 2e9, zoomed_from: 1700000000, zoomed_to: 1700100000 };
+      return expr.includes('.resolution()') ? 'D' : { from: 1700000000, to: 1700100000 };
     }) as any;
     await setVisibleRange({ from: 1700000000, to: 1700100000, _deps });
     const call = evaluate.calls.find(c => c.includes('zoomToBarsRange'));
