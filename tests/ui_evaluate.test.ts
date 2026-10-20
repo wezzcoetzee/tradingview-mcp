@@ -2,7 +2,7 @@
  * Tests for the ui_evaluate gate. ui_evaluate runs arbitrary JS in the
  * TradingView page context, so it must be off unless explicitly enabled.
  */
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'bun:test';
 import assert from 'node:assert/strict';
 import { uiEvaluate } from '../src/core/ui.js';
 import { registerUiTools } from '../src/tools/ui.js';

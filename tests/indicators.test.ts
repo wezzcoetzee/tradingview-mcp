@@ -13,7 +13,7 @@
  *   (c) Unknown studies    — both paths fail; available_inputs should still list
  *       whatever keys were discovered so callers can debug name mismatches.
  */
-import { describe, it } from 'node:test';
+import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { setInputs } from '../src/core/indicators.js';
 import { getIndicator } from '../src/core/data.js';

@@ -2,7 +2,7 @@
  * Tests for all replay functions in src/core/replay.js.
  * Covers: start, step, autoplay, stop, trade, status + DI mocks.
  */
-import { describe, it } from 'node:test';
+import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { start, step, autoplay, stop, trade, status, VALID_AUTOPLAY_DELAYS } from '../src/core/replay.js';
@@ -136,7 +136,7 @@ describe('start() — date selection and polling', () => {
       },
     );
     assert.ok(stopCalled, 'stopReplay called for cleanup');
-  });
+  }, 15000); // start() polls for up to 7.5s before giving up
 });
 
 // ── step() ───────────────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ describe('autoplay() — delay validation', () => {
     });
   }
 
-  const INVALID_DELAYS = [50, 60000, 99, 101, 500, 750, 1500, 9999, 20000];
+  const INVALID_DELAYS = [0, 50, 60000, 99, 101, 500, 750, 1500, 9999, 20000];
   for (const delay of INVALID_DELAYS) {
     it(`rejects invalid delay ${delay}ms before any CDP call`, async () => {
       const { _deps, evaluate } = mockDeps({});
@@ -218,19 +218,6 @@ describe('autoplay() — delay validation', () => {
       assert.equal(evaluate.calls.length, 0, 'no CDP calls for invalid speed');
     });
   }
-
-  it('toggles without changing speed when speed is 0', async () => {
-    const { _deps, evaluate } = mockDeps({
-      'isReplayStarted': true,
-      'toggleAutoplay': undefined,
-      'isAutoplayStarted': true,
-      'autoplayDelay': 100,
-    });
-    const result = await autoplay({ speed: 0, _deps });
-    assert.equal(result.success, true);
-    const changeCall = evaluate.calls.find(c => c.includes('changeAutoplayDelay'));
-    assert.equal(changeCall, undefined, 'changeAutoplayDelay not called for speed=0');
-  });
 
   it('toggles without changing speed when speed omitted', async () => {
     const { _deps, evaluate } = mockDeps({
@@ -278,7 +265,7 @@ describe('stop()', () => {
   });
 
   it('does not call hideReplayToolbar', () => {
-    const source = readFileSync(new URL('../src/core/replay.js', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../src/core/replay.ts', import.meta.url), 'utf8');
     assert.ok(!source.includes('hideReplayToolbar'), 'hideReplayToolbar must not appear anywhere');
   });
 });

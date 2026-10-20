@@ -2,10 +2,10 @@
  * CLI unit tests — no TradingView connection needed.
  * Tests: help output, pine analyze, pine check, error handling, exit codes.
  *
- * Run: node --test tests/cli.test.js
+ * Run: bun test tests/cli.test.ts
  */
 
-import { describe, it } from 'node:test';
+import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { execFileSync, execSync } from 'child_process';
 import { join, dirname } from 'path';
@@ -19,7 +19,7 @@ const CLI = join(__dirname, '..', 'src', 'cli', 'index.ts');
 
 function run(args, opts = {}) {
   try {
-    const stdout = execFileSync('npx', ['tsx', CLI, ...args], {
+    const stdout = execFileSync(process.execPath, [CLI, ...args], {
       encoding: 'utf-8',
       timeout: 15000,
       ...opts,

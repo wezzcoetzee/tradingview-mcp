@@ -1,4 +1,4 @@
-import { describe, it, mock } from 'node:test';
+import { describe, it, mock } from 'bun:test';
 import assert from 'node:assert/strict';
 import * as connection from '../src/connection.js';
 import { debug, isDebugEnabled } from '../src/debug.js';
