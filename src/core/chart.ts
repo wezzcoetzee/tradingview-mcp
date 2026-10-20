@@ -61,19 +61,23 @@ export async function setTimeframe({ timeframe: raw, _deps }: any = {}) {
   return { success: true, timeframe, chart_ready: true };
 }
 
+/** TradingView chart style ids (the public SeriesStyle enum). 11 is not a style TradingView exposes. */
+export const CHART_TYPES: Record<string, number> = {
+  Bars: 0, Candles: 1, Line: 2, Area: 3,
+  Renko: 4, Kagi: 5, PointAndFigure: 6, LineBreak: 7,
+  HeikinAshi: 8, HollowCandles: 9,
+  Baseline: 10, HiLo: 12, Columns: 13, LineWithMarkers: 14, StepLine: 15,
+};
+const VALID_CHART_STYLES = new Set(Object.values(CHART_TYPES));
+
 export async function setType({ chart_type, _deps }: any = {}) {
   const { evaluate, waitOpts } = _resolve(_deps);
   if (chart_type == null || String(chart_type).trim() === '') {
-    throw new Error('chart_type is required. Use a name (Candles, Line, etc.) or number (0-9).');
+    throw new Error('chart_type is required. Use a name (Candles, Line, etc.) or a style number.');
   }
-  const typeMap = {
-    'Bars': 0, 'Candles': 1, 'Line': 2, 'Area': 3,
-    'Renko': 4, 'Kagi': 5, 'PointAndFigure': 6, 'LineBreak': 7,
-    'HeikinAshi': 8, 'HollowCandles': 9,
-  };
-  const typeNum = typeMap[chart_type] ?? Number(chart_type);
-  if (isNaN(typeNum) || typeNum < 0 || typeNum > 9 || !Number.isInteger(typeNum)) {
-    throw new Error(`Unknown chart type: ${chart_type}. Use a name (Candles, Line, etc.) or number (0-9).`);
+  const typeNum = CHART_TYPES[chart_type] ?? Number(chart_type);
+  if (!VALID_CHART_STYLES.has(typeNum)) {
+    throw new Error(`Unknown chart type: ${chart_type}. Use a name (${Object.keys(CHART_TYPES).join(', ')}) or one of the numbers ${[...VALID_CHART_STYLES].join(', ')}.`);
   }
   await evaluate(`${CHART_API}.setChartType(${typeNum})`);
   const { ok, value } = await waitFor<number>(`${CHART_API}.chartType()`, (v) => v === typeNum, { timeout: 3000, ...waitOpts });
@@ -286,12 +290,14 @@ export async function symbolInfo() {
   return { success: true, ...result };
 }
 
-export async function symbolSearch({ query, type }: any = {}) {
+const SYMBOL_SEARCH_TIMEOUT_MS = 10000;
+
+export async function symbolSearch({ query, type, exchange }: any = {}) {
   // Use TradingView's public symbol search REST API (works without auth)
   const params = new URLSearchParams({
     text: query,
     hl: '1',
-    exchange: '',
+    exchange: exchange || '',
     lang: 'en',
     search_type: type || '',
     domain: 'production',
@@ -299,6 +305,7 @@ export async function symbolSearch({ query, type }: any = {}) {
 
   const resp = await fetch(`https://symbol-search.tradingview.com/symbol_search/v3/?${params}`, {
     headers: { 'Origin': 'https://www.tradingview.com', 'Referer': 'https://www.tradingview.com/' },
+    signal: AbortSignal.timeout(SYMBOL_SEARCH_TIMEOUT_MS),
   });
   if (!resp.ok) throw new Error(`Symbol search API returned ${resp.status}`);
   const data = await resp.json();

@@ -35,7 +35,7 @@ export function registerChartTools(server: McpServer) {
     name: 'chart_set_type',
     description: 'Change chart type',
     inputSchema: {
-      chart_type: z.string().describe('Chart type: Bars(0), Candles(1), Line(2), Area(3), Renko(4), Kagi(5), PointAndFigure(6), LineBreak(7), HeikinAshi(8), HollowCandles(9) — pass name or number'),
+      chart_type: z.string().describe('Chart type: Bars(0), Candles(1), Line(2), Area(3), Renko(4), Kagi(5), PointAndFigure(6), LineBreak(7), HeikinAshi(8), HollowCandles(9), Baseline(10), HiLo(12), Columns(13), LineWithMarkers(14), StepLine(15) — pass name or number'),
     },
     annotations: IDEMPOTENT_WRITE,
     run: ({ chart_type }) => core.setType({ chart_type }),
@@ -95,8 +95,9 @@ export function registerChartTools(server: McpServer) {
     inputSchema: {
       query: z.string().describe('Search query (e.g., "AAPL", "crude oil", "ES")'),
       type: z.string().optional().describe('Filter by type (e.g., "stock", "futures", "crypto", "forex")'),
+      exchange: z.string().optional().describe('Only symbols listed on this exchange (e.g., "NASDAQ", "BINANCE")'),
     },
     annotations: READ_ONLY,
-    run: ({ query, type }) => core.symbolSearch({ query, type }),
+    run: ({ query, type, exchange }) => core.symbolSearch({ query, type, exchange }),
   });
 }

@@ -45,16 +45,16 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 1. `pine_set_source` → inject code into editor
 2. `pine_smart_compile` → compile with auto-detection; `has_errors` counts severity 8 only, `warnings` are listed apart, and `compile_confirmed: false` means the markers may be from the previous compile
 3. `pine_get_errors` → read markers (`errors` vs `warnings`, each with `severity`)
-4. `pine_get_console` → read log.info() output
-5. `pine_get_source` → read current code back (WARNING: can be very large for complex scripts)
+4. `pine_get_console` → read log.info() output (deduplicated, newest 50 by default; `limit` to change)
+5. `pine_get_source` → read current code back (WARNING: can be very large; use `from_line`/`to_line`/`max_chars`, `total_lines` tells you the size)
 6. `pine_save` → save to TradingView cloud
 7. `pine_new` → replace the editor with a blank indicator/strategy/library (refuses if a saved script is open unless `replace_current: true`)
 8. `pine_open` → load a saved script by name into the editor (same `replace_current` guard)
 
 ### "Practice trading with replay"
 1. `replay_start` with `date: "2025-03-01"` → enter replay mode
-2. `replay_step` → advance one bar
-3. `replay_autoplay` → auto-advance (set speed with `speed` param in ms)
+2. `replay_step` → advance bars (`count` up to 500; returns `advanced`); `replay_jump` with `date` → move to another date mid-replay
+3. `replay_autoplay` → `enabled: true/false` for an explicit state (omit to flip), `speed` in ms
 4. `replay_trade` with `action: "buy"/"sell"/"close"` → execute trades
 5. `replay_status` → check position, P&L, current date
 6. `replay_stop` → return to realtime
@@ -64,8 +64,8 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `data_get_trades` returns the latest trades with `total`; pass `offset` to page from the oldest
 
 ### "Draw on the chart"
-- `draw_shape` → horizontal_line, trend_line, rectangle, text (pass point + optional point2)
-- `draw_list` → see what's drawn
+- `draw_shape` → horizontal_line, trend_line, rectangle, text (pass point + optional point2; `more_points` for channels/pitchforks/fib, `lock: true` to lock)
+- `draw_list` → see what's drawn, with points
 - `draw_remove_one` → remove by ID
 - `draw_clear` → remove all
 
@@ -92,7 +92,7 @@ These tools can return large payloads. Follow these rules to avoid context bloat
 1. **Always use `summary: true` on `data_get_ohlcv`** unless you specifically need individual bars
 2. **Always use `study_filter`** on pine tools when you know which indicator you want — don't scan all studies unnecessarily
 3. **Never use `verbose: true`** on pine tools unless the user specifically asks for raw drawing data with IDs/colors
-4. **Avoid calling `pine_get_source`** on complex scripts — it can return 200KB+. Only read if you need to edit the code.
+4. **Avoid calling `pine_get_source`** on complex scripts — it can return 200KB+. Read a range with `from_line`/`to_line`/`max_chars`; `data_get_equity` takes `max_points` or `summary: true`.
 5. **Avoid calling `data_get_indicator`** on protected/encrypted indicators — their inputs are encoded blobs. Use `data_get_study_values` instead for current values.
 6. **Use `capture_screenshot`** for visual context instead of pulling large datasets — a screenshot is ~300KB but gives you the full visual picture
 7. **Call `chart_get_state` once** at the start to get entity IDs, then reference them — don't re-call repeatedly

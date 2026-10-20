@@ -2,22 +2,24 @@
  * Core tab management logic.
  * Controls TradingView Desktop tabs via CDP and Electron keyboard shortcuts.
  */
-import { getClient, disconnect, setPreferredTargetId, listTargets, cdpFetch } from '../connection.js';
+import { getClient, disconnect, setPreferredTargetId, getPreferredTargetId, listTargets, pickChartTarget, cdpFetch } from '../connection.js';
 
 const TAB_CHANGE_TIMEOUT_MS = 5000;
 const POLL_INTERVAL_MS = 250;
 
 /**
- * List all open chart tabs (CDP page targets).
+ * List all open chart tabs (CDP page targets). `active` marks the tab the other tools act on.
  */
 export async function list() {
   const targets = await listTargets();
+  const activeId = pickChartTarget(targets, getPreferredTargetId())?.id;
 
   const tabs = targets
     .filter(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
     .map((t, i) => ({
       index: i,
       id: t.id,
+      active: t.id === activeId,
       title: t.title.replace(/^Live stock.*charts on /, ''),
       url: t.url,
       chart_id: t.url.match(/\/chart\/([^/?]+)/)?.[1] || null,
@@ -58,7 +60,10 @@ export async function newTab() {
   if (after.tab_count <= before.tab_count) {
     throw new Error(`New tab did not open (tab count stayed at ${before.tab_count})`);
   }
-  return { ...after, action: 'new_tab_opened', tabs_before: before.tab_count };
+  const opened = after.tabs.find(t => !before.tabs.some(b => b.id === t.id));
+  if (!opened) throw new Error('A tab opened but could not be identified');
+  await switchTab({ index: opened.index });
+  return { ...(await list()), action: 'new_tab_opened', tabs_before: before.tab_count, new_tab: { ...opened, active: true } };
 }
 
 /**
