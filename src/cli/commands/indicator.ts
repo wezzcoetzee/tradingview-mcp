@@ -1,4 +1,4 @@
-import { register } from '../router.js';
+import { register, parseBoolean } from '../router.js';
 import * as chartCore from '../../core/chart.js';
 import * as indCore from '../../core/indicators.js';
 import * as dataCore from '../../core/data.js';
@@ -26,12 +26,12 @@ register('indicator', {
     ['toggle', {
       description: 'Show or hide an indicator',
       options: {
-        visible: { type: 'boolean', description: 'Show (true) or hide (false)' },
-        hidden: { type: 'boolean', description: 'Hide the indicator' },
+        visible: { type: 'string', description: 'Show (true) or hide (false). Default true' },
+        hide: { type: 'boolean', description: 'Hide the indicator (same as --visible false)' },
       },
       handler: (opts, positionals) => {
-        if (!positionals[0]) throw new Error('Entity ID required. Usage: tv indicator toggle eFu1Ot --visible');
-        const visible = opts.hidden ? false : (opts.visible !== undefined ? opts.visible : true);
+        if (!positionals[0]) throw new Error('Entity ID required. Usage: tv indicator toggle eFu1Ot --visible false');
+        const visible = opts.hide ? false : (parseBoolean(opts.visible, 'visible') ?? true);
         return indCore.toggleVisibility({ entity_id: positionals[0], visible });
       },
     }],

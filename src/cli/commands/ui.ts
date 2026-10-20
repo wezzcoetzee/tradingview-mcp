@@ -1,16 +1,23 @@
 import { register } from '../router.js';
 import * as core from '../../core/ui.js';
 
+const selectorOptions = {
+  by: { type: 'string', short: 'b', description: 'Selector: aria-label, data-name, text, class-contains' },
+  value: { type: 'string', short: 'v', description: 'Value to match' },
+} as const;
+
+function requireSelectorValue(opts: { value?: string }, command: string): string {
+  if (!opts.value) throw new Error(`--value required. Usage: tv ui ${command} --by aria-label --value "Indicators"`);
+  return opts.value;
+}
+
 register('ui', {
   description: 'UI automation tools (click, keyboard, hover, scroll, find, eval, type, panel, fullscreen, mouse)',
   subcommands: new Map<string, any>([
     ['click', {
       description: 'Click a UI element',
-      options: {
-        by: { type: 'string', short: 'b', description: 'Selector: aria-label, data-name, text, class-contains' },
-        value: { type: 'string', short: 'v', description: 'Value to match' },
-      },
-      handler: (opts) => core.click({ by: opts.by || 'text', value: opts.value }),
+      options: selectorOptions,
+      handler: (opts) => core.click({ by: opts.by || 'text', value: requireSelectorValue(opts, 'click') }),
     }],
     ['keyboard', {
       description: 'Press a keyboard key or shortcut',
@@ -32,11 +39,8 @@ register('ui', {
     }],
     ['hover', {
       description: 'Hover over a UI element',
-      options: {
-        by: { type: 'string', short: 'b', description: 'Selector: aria-label, data-name, text, class-contains' },
-        value: { type: 'string', short: 'v', description: 'Value to match' },
-      },
-      handler: (opts) => core.hover({ by: opts.by || 'text', value: opts.value }),
+      options: selectorOptions,
+      handler: (opts) => core.hover({ by: opts.by || 'text', value: requireSelectorValue(opts, 'hover') }),
     }],
     ['scroll', {
       description: 'Scroll the chart',

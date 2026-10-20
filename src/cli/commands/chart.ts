@@ -1,4 +1,4 @@
-import { register } from '../router.js';
+import { register, parseNumber } from '../router.js';
 import * as core from '../../core/chart.js';
 import * as healthCore from '../../core/health.js';
 
@@ -29,8 +29,11 @@ register('timeframe', {
 
 register('type', {
   description: 'Get or set the chart type (Candles, Line, etc.)',
+  options: {
+    type: { type: 'string', short: 't', description: 'Chart type to set (same as the positional argument)' },
+  },
   handler: async (opts, positionals) => {
-    const ct = positionals[0];
+    const ct = opts.type ?? positionals[0];
     if (ct) return core.setType({ chart_type: ct });
     const state = await core.getState();
     const typeNames = ['Bars', 'Candles', 'Line', 'Area', 'Renko', 'Kagi', 'PointAndFigure', 'LineBreak', 'HeikinAshi', 'HollowCandles'];
@@ -58,8 +61,8 @@ register('range', {
     to: { type: 'string', description: 'End timestamp (unix seconds)' },
   },
   handler: async (opts) => {
-    if (opts.from && opts.to) return core.setVisibleRange({ from: Number(opts.from), to: Number(opts.to) });
-    return core.getVisibleRange();
+    if (opts.from === undefined && opts.to === undefined) return core.getVisibleRange();
+    return core.setVisibleRange({ from: parseNumber(opts.from, 'from'), to: parseNumber(opts.to, 'to') });
   },
 });
 

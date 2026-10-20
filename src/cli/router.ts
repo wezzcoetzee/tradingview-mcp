@@ -1,14 +1,46 @@
 /**
  * CLI command router using node:util parseArgs.
  * Zero dependencies — uses only Node.js built-ins.
+ * Flags are parsed in strict mode: unknown flags fail with the list of valid ones.
  */
 import { parseArgs } from 'node:util';
+
+type OptionSpec = { type: 'string' | 'boolean'; short?: string; description?: string };
+type OptionMap = Record<string, OptionSpec>;
 
 /** @type {Map<string, { description: string, options?: object, handler: Function, subcommands?: Map<string, object> }>} */
 const commands = new Map();
 
 export function register(name, config) {
   commands.set(name, config);
+}
+
+/** Parses a `true`/`false` value for a flag that takes a value, e.g. `--visible false`. */
+export function parseBoolean(value: string | undefined, flag: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`--${flag} must be "true" or "false", got "${value}"`);
+}
+
+/** Rejects missing or non-numeric values instead of passing NaN into core. */
+export function parseNumber(value: string | undefined, flag: string): number {
+  if (value === undefined || value.trim() === '' || !Number.isFinite(Number(value))) {
+    throw new Error(`--${flag} must be a number`);
+  }
+  return Number(value);
+}
+
+function flagLabel(name: string, spec: OptionSpec): string {
+  return spec.short ? `-${spec.short}, --${name}` : `    --${name}`;
+}
+
+function printOptions(options: OptionMap) {
+  if (Object.keys(options).length === 0) return;
+  console.log('\nOptions:');
+  for (const [name, spec] of Object.entries(options)) {
+    console.log(`  ${flagLabel(name, spec).padEnd(20)}${spec.description || ''}`);
+  }
 }
 
 function printHelp() {
@@ -29,24 +61,33 @@ function printHelp() {
   console.log('  Use subject to TradingView\'s Terms of Use: tradingview.com/policies');
 }
 
-function printCommandHelp(name, cmd) {
+function printCommandHelp(name: string, cmd) {
   if (cmd.subcommands) {
     console.log(`Usage: tv ${name} <subcommand> [options]\n`);
     console.log('Subcommands:');
     for (const [sub, subConf] of cmd.subcommands) {
       console.log(`  ${sub.padEnd(12)}${subConf.description}`);
     }
-  } else {
-    console.log(`Usage: tv ${name} [options]\n`);
-    console.log(cmd.description);
+    return;
   }
-  const opts = cmd.options || {};
-  if (Object.keys(opts).length > 0) {
-    console.log('\nOptions:');
-    for (const [k, v] of Object.entries(opts) as [string, any][]) {
-      const flag = v.short ? `-${v.short}, --${k}` : `    --${k}`;
-      console.log(`  ${flag.padEnd(20)}${v.description || ''}`);
+  console.log(`Usage: tv ${name} [options]\n`);
+  console.log(cmd.description);
+  printOptions(cmd.options || {});
+}
+
+const UNKNOWN_OPTION = /Unknown option '([^']+)'/;
+
+function parseCommandArgs(args: string[], options: OptionMap) {
+  const spec: OptionMap = { help: { type: 'boolean', short: 'h' }, ...options };
+  try {
+    return parseArgs({ args, options: spec, allowPositionals: true, strict: true });
+  } catch (err) {
+    const unknown = err instanceof Error ? UNKNOWN_OPTION.exec(err.message)?.[1] : undefined;
+    if (unknown) {
+      const valid = Object.entries(spec).map(([name, s]) => flagLabel(name, s).trim()).join(', ');
+      throw new Error(`Unknown option '${unknown}'. Valid options: ${valid}`);
     }
+    throw err;
   }
 }
 
@@ -67,8 +108,11 @@ export async function run(argv) {
     process.exit(1);
   }
 
+  let name = cmdName;
+  let target = cmd;
+  let rest = args.slice(1);
+
   // Handle subcommands (e.g., tv pine get)
-  let handler, options;
   if (cmd.subcommands) {
     const subName = args[1];
     if (!subName || subName === '--help' || subName === '-h') {
@@ -81,50 +125,20 @@ export async function run(argv) {
       printCommandHelp(cmdName, cmd);
       process.exit(1);
     }
-    handler = sub.handler;
-    options = sub.options || {};
-    // Parse remaining args after command + subcommand
-    try {
-      const { values, positionals } = parseArgs({
-        args: args.slice(2),
-        options: { help: { type: 'boolean', short: 'h' }, ...options },
-        allowPositionals: true,
-        strict: false,
-      });
-      if (values.help) {
-        console.log(`Usage: tv ${cmdName} ${subName} [options]\n`);
-        console.log(sub.description);
-        if (Object.keys(options).length > 0) {
-          console.log('\nOptions:');
-          for (const [k, v] of Object.entries(options) as [string, any][]) {
-            const flag = v.short ? `-${v.short}, --${k}` : `    --${k}`;
-            console.log(`  ${flag.padEnd(20)}${v.description || ''}`);
-          }
-        }
-        process.exit(0);
-      }
-      await execute(handler, values, positionals);
-    } catch (err) {
-      handleError(err);
+    name = `${cmdName} ${subName}`;
+    target = sub;
+    rest = args.slice(2);
+  }
+
+  try {
+    const { values, positionals } = parseCommandArgs(rest, target.options || {});
+    if (values.help) {
+      printCommandHelp(name, target);
+      process.exit(0);
     }
-  } else {
-    handler = cmd.handler;
-    options = cmd.options || {};
-    try {
-      const { values, positionals } = parseArgs({
-        args: args.slice(1),
-        options: { help: { type: 'boolean', short: 'h' }, ...options },
-        allowPositionals: true,
-        strict: false,
-      });
-      if (values.help) {
-        printCommandHelp(cmdName, cmd);
-        process.exit(0);
-      }
-      await execute(handler, values, positionals);
-    } catch (err) {
-      handleError(err);
-    }
+    await execute(target.handler, values, positionals);
+  } catch (err) {
+    handleError(err);
   }
 }
 
