@@ -5,6 +5,30 @@
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
 
+/** CDP modifier bitmask for the platform's shortcut key: Cmd (4) on macOS, Ctrl (2) elsewhere. */
+export function shortcutModifier(platform: NodeJS.Platform): 2 | 4 {
+  return platform === 'darwin' ? 4 : 2;
+}
+const MOD = shortcutModifier(process.platform);
+
+/**
+ * Title from the first indicator()/strategy()/library() declaration, or null.
+ * This is the only script identity available inside the editor itself.
+ */
+export function parseScriptTitle(source: string): string | null {
+  const m = source.match(/^\s*(?:indicator|strategy|library)\s*\(\s*(?:title\s*=\s*)?(?:"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)')/m);
+  return m ? (m[1] ?? m[2]) : null;
+}
+
+/** True when `title` matches a saved script name or title (case-insensitive), i.e. a save would overwrite it. */
+export function matchesSavedScript(title: string | null, saved: readonly SavedScript[]): boolean {
+  if (!title) return false;
+  const t = title.toLowerCase();
+  return saved.some(s => s.name.toLowerCase() === t || s.title?.toLowerCase() === t);
+}
+
+interface SavedScript { name: string; title: string | null }
+
 // ── Monaco finder (injected into TV page) ──
 const FIND_MONACO = `
   (function findMonacoEditor() {
@@ -264,7 +288,37 @@ export async function getSource() {
   return { success: true, source, line_count: source.split('\n').length, char_count: source.length };
 }
 
-export async function setSource({ source }: any = {}) {
+/** Title of the script in the editor (from its declaration), or null if undeclared. */
+async function readEditorTitle(): Promise<string | null> {
+  const source = await evaluate(`
+    (function() {
+      var m = ${FIND_MONACO};
+      return m ? m.editor.getValue() : null;
+    })()
+  `);
+  return typeof source === 'string' ? parseScriptTitle(source) : null;
+}
+
+/**
+ * pine_new / pine_open inject source into the open Monaco model, so a later save
+ * would overwrite the open script. Refuse when it is a saved script unless the caller opts in.
+ * Fails closed when the saved list cannot be read.
+ */
+async function assertSafeToReplace(replaceCurrent: boolean | undefined, action: string) {
+  if (replaceCurrent) return;
+  const title = await readEditorTitle();
+  if (!title) return;
+  const listed = await listScripts();
+  if (listed.error || matchesSavedScript(title, listed.scripts)) {
+    const why = listed.error ? `could not check saved scripts (${listed.error})` : `the editor holds the saved script "${title}"`;
+    throw new Error(
+      `Refusing to ${action}: ${why}. This tool replaces the open editor contents, so a following pine_save would overwrite that script. ` +
+      'Save or back up the script first, then retry with replace_current: true if overwriting is intended.',
+    );
+  }
+}
+
+export async function setSource({ source }: { source: string }) {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
@@ -279,7 +333,7 @@ export async function setSource({ source }: any = {}) {
   `);
 
   if (!set) throw new Error('Monaco found but setValue() failed.');
-  return { success: true, lines_set: source.split('\n').length };
+  return { success: true, lines_set: source.split('\n').length, script_name: await readEditorTitle() };
 }
 
 export async function compile() {
@@ -312,7 +366,7 @@ export async function compile() {
 
   if (!clicked) {
     const c = await getClient();
-    await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: 2, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: MOD, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter' });
   }
 
@@ -350,7 +404,7 @@ export async function save() {
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
   const c = await getClient();
-  await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: 2, key: 's', code: 'KeyS', windowsVirtualKeyCode: 83 });
+  await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: MOD, key: 's', code: 'KeyS', windowsVirtualKeyCode: 83 });
   await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 's', code: 'KeyS' });
   await new Promise(r => setTimeout(r, 800));
 
@@ -374,7 +428,30 @@ export async function save() {
 
   if (dialogHandled) await new Promise(r => setTimeout(r, 500));
 
-  return { success: true, action: dialogHandled ? 'saved_with_dialog' : 'Ctrl+S_dispatched' };
+  // The Pine toolbar shows a "Saved" button once the script has no pending changes
+  let confirmed = false;
+  for (let i = 0; i < 10 && !confirmed; i++) {
+    confirmed = await evaluate(`
+      (function() {
+        var btns = document.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) {
+          if (btns[i].offsetParent !== null && /^Saved/.test(btns[i].textContent.trim())) return true;
+        }
+        return false;
+      })()
+    `);
+    if (!confirmed) await new Promise(r => setTimeout(r, 300));
+  }
+
+  const script_name = await readEditorTitle();
+  if (!confirmed) {
+    return {
+      success: false,
+      script_name,
+      error: 'Save could not be confirmed: the Pine editor still reports unsaved changes. The script may not have been saved.',
+    };
+  }
+  return { success: true, script_name, action: dialogHandled ? 'saved_with_dialog' : `${MOD === 4 ? 'Cmd' : 'Ctrl'}+S_dispatched` };
 }
 
 export async function getConsole() {
@@ -466,7 +543,7 @@ export async function smartCompile() {
 
   if (!buttonClicked) {
     const c = await getClient();
-    await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: 2, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: MOD, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter' });
   }
 
@@ -506,9 +583,10 @@ export async function smartCompile() {
   };
 }
 
-export async function newScript({ type }: any = {}) {
+export async function newScript({ type, replace_current }: { type: 'indicator' | 'strategy' | 'library'; replace_current?: boolean }) {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
+  await assertSafeToReplace(replace_current, 'create a new script');
 
   const typeMap = { indicator: 'indicator', strategy: 'strategy', library: 'library' };
   const templates = {
@@ -532,12 +610,13 @@ export async function newScript({ type }: any = {}) {
 
   if (!set) throw new Error('Monaco editor not found. Ensure Pine Editor is open.');
 
-  return { success: true, type, action: 'new_script_created', template: typeMap[type] };
+  return { success: true, type, action: 'new_script_created', template: typeMap[type], script_name: parseScriptTitle(template) };
 }
 
-export async function openScript({ name }: any = {}) {
+export async function openScript({ name, replace_current }: { name: string; replace_current?: boolean }) {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
+  await assertSafeToReplace(replace_current, `open "${name}"`);
 
   const escapedName = JSON.stringify(name.toLowerCase());
 
@@ -586,7 +665,7 @@ export async function openScript({ name }: any = {}) {
     throw new Error(result.error);
   }
 
-  return { success: true, name: result.name, script_id: result.id, lines: result.lines, source: 'internal_api', opened: true };
+  return { success: true, name: result.name, script_name: await readEditorTitle(), script_id: result.id, lines: result.lines, source: 'internal_api', opened: true };
 }
 
 export async function listScripts() {

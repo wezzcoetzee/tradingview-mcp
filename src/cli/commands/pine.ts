@@ -73,21 +73,27 @@ register('pine', {
       },
     }],
     ['save', {
-      description: 'Save the current Pine Script (Ctrl+S)',
+      description: 'Save the current Pine Script (Cmd+S on macOS, Ctrl+S elsewhere)',
       handler: () => core.save(),
     }],
     ['new', {
-      description: 'Create a new blank Pine Script (indicator, strategy, library)',
+      description: 'Replace the editor with a new blank Pine Script (indicator, strategy, library); refuses if a saved script is open',
+      options: {
+        'replace-current': { type: 'boolean', description: 'Replace the editor even if a saved script is open (a later save would overwrite it)' },
+      },
       handler: (opts, positionals) => {
-        const type = positionals[0] || 'indicator';
-        return core.newScript({ type });
+        const type = (positionals[0] || 'indicator') as 'indicator' | 'strategy' | 'library';
+        return core.newScript({ type, replace_current: opts['replace-current'] });
       },
     }],
     ['open', {
-      description: 'Open a saved Pine Script by name',
+      description: 'Load a saved Pine Script by name into the editor; refuses if a saved script is open',
+      options: {
+        'replace-current': { type: 'boolean', description: 'Replace the editor even if a saved script is open (a later save would overwrite it)' },
+      },
       handler: (opts, positionals) => {
         if (!positionals[0]) throw new Error('Script name required. Usage: tv pine open "My Script"');
-        return core.openScript({ name: positionals.join(' ') });
+        return core.openScript({ name: positionals.join(' '), replace_current: opts['replace-current'] });
       },
     }],
     ['list', {
