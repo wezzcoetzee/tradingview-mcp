@@ -14,22 +14,30 @@ If the user specifies a different install path, use that instead of `~/tradingvi
 
 ## Step 2: Add to MCP Config
 
-Add the server to the user's Claude Code MCP configuration. The config file is at `~/.claude/.mcp.json` (global) or `.mcp.json` (project-level).
+Register the server at user scope (stored in `~/.claude.json`, available in every project):
+
+```bash
+claude mcp add --scope user tradingview -- "$(which bun)" "<INSTALL_PATH>/src/server.ts"
+```
+
+Replace `<INSTALL_PATH>` with the actual path where the repo was cloned (e.g., `/Users/username/tradingview-mcp`).
+
+The `bun` path must be absolute. MCP clients launch servers in a non-interactive shell where `bun` is often not on PATH, so `"$(which bun)"` (typically `~/.bun/bin/bun`) is resolved now and stored in the config. Node cannot run the `.ts` entrypoint.
+
+To edit the config by hand instead, add this under `mcpServers` in `~/.claude.json`, merging with any existing servers:
 
 ```json
 {
   "mcpServers": {
     "tradingview": {
-      "command": "bun",
-      "args": ["<INSTALL_PATH>/src/server.ts"]
+      "command": "/Users/username/.bun/bin/bun",
+      "args": ["/Users/username/tradingview-mcp/src/server.ts"]
     }
   }
 }
 ```
 
-Replace `<INSTALL_PATH>` with the actual path where the repo was cloned (e.g., `/Users/username/tradingview-mcp`).
-
-If the config file already exists and has other servers, merge the `tradingview` entry into the existing `mcpServers` object. Do not overwrite other servers.
+Verify with `claude mcp list`.
 
 ## Step 3: Launch TradingView Desktop
 
@@ -96,8 +104,13 @@ Then `tv status`, `tv quote`, `tv pine compile`, etc. work from anywhere.
 |---------|----------|
 | `cdp_connected: false` | Launch TradingView with `--remote-debugging-port=9222` |
 | `ECONNREFUSED` | TradingView isn't running or port 9222 is blocked |
-| MCP server not showing in Claude Code | Check `~/.claude/.mcp.json` syntax, restart Claude Code |
-| `tv` command not found | Run `bun link` from the project directory |
+| MCP server fails to start, `bun: command not found` | Re-run `claude mcp add` using the absolute bun path from `which bun` |
+| MCP server not showing in Claude Code | Run `claude mcp list`, check `~/.claude.json` syntax, restart Claude Code |
+| Port 9222 already in use | Another process holds the port. Quit it, or set `TV_CDP_PORT` (server and TradingView must match) |
+| TradingView running but not on port 9222 (macOS) | A TradingView started without the flag is still running. Quit it fully (Cmd+Q) and relaunch, or use `tv_launch` with `kill_existing: true` |
+| Tools act on the wrong chart | Multiple tabs open. Use `tab_list` and `tab_switch` to target the right one |
+| `ui_evaluate` is disabled | Intentional. Requires `TRADINGVIEW_MCP_ALLOW_EVAL=1` and `TRADINGVIEW_MCP_CONFIRM_EVAL=1`. See README Security |
+| `tv` command not found | Run `bun link` from the project directory, or use `bun run tv <command>` |
 | Tools return stale data | TradingView may still be loading — wait a few seconds |
 | Pine Editor tools fail | Open the Pine Editor panel first (`ui_open_panel pine-editor open`) |
 

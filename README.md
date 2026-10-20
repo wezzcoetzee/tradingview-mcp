@@ -72,7 +72,7 @@ Gives your AI assistant eyes and hands on your own chart:
 
 Paste this into Claude Code and it will handle the rest:
 
-> Install the TradingView MCP server. Clone https://github.com/wezzcoetzee/tradingview-mcp.git, run bun install, add it to my MCP config at ~/.claude/.mcp.json, and launch TradingView with the debug port. Then verify the connection with tv_health_check.
+> Install the TradingView MCP server. Clone https://github.com/wezzcoetzee/tradingview-mcp.git, run bun install, register it with `claude mcp add --scope user` using the absolute path to bun, and launch TradingView with the debug port. Then verify the connection with tv_health_check.
 
 Or follow the manual steps below.
 
@@ -115,20 +115,26 @@ scripts\launch_tv_debug.bat
 
 ### 3. Add to Claude Code
 
-Add to your Claude Code MCP config (`~/.claude/.mcp.json` or project `.mcp.json`):
+Register the server at user scope (stored in `~/.claude.json`):
+
+```bash
+claude mcp add --scope user tradingview -- "$(which bun)" /path/to/tradingview-mcp/src/server.ts
+```
+
+Replace `/path/to/tradingview-mcp` with your actual path. The bun path must be absolute: MCP clients run servers in a non-interactive shell where `bun` is often not on PATH, so `"$(which bun)"` stores e.g. `/Users/you/.bun/bin/bun` in the config.
+
+For a project-only setup, put the same entry in a `.mcp.json` at the project root:
 
 ```json
 {
   "mcpServers": {
     "tradingview": {
-      "command": "bun",
+      "command": "/Users/you/.bun/bin/bun",
       "args": ["/path/to/tradingview-mcp/src/server.ts"]
     }
   }
 }
 ```
-
-Replace `/path/to/tradingview-mcp` with your actual path.
 
 ### 4. Verify
 
@@ -331,17 +337,18 @@ Tools return compact output by default to minimize context usage. For a typical 
 
 `ui_evaluate` runs arbitrary JavaScript in the TradingView page context via Chrome DevTools Protocol. It bypasses the input sanitization that protects every other tool, so it's disabled by default. Any prompt-injected content reaching it could exfiltrate session cookies, drive trades through the order panel, or pivot to other CDP-attached pages.
 
-To opt in (e.g. for power-user automation you trust end-to-end):
+To opt in (e.g. for power-user automation you trust end-to-end), set both variables:
 
 ```bash
-TRADINGVIEW_MCP_ALLOW_EVAL=1 bun start
+TRADINGVIEW_MCP_ALLOW_EVAL=1 TRADINGVIEW_MCP_CONFIRM_EVAL=1 bun start
 ```
 
-When the flag is unset, the tool is not registered with the MCP server and direct calls into `core.uiEvaluate()` throw.
+When either flag is unset, `core.uiEvaluate()` throws.
 
 | Env var | Default | Effect |
 |---|---|---|
 | `TRADINGVIEW_MCP_ALLOW_EVAL` | unset | When `1`, registers `ui_evaluate` and allows arbitrary JS in the TradingView page |
+| `TRADINGVIEW_MCP_CONFIRM_EVAL` | unset | Must also be `1` for `ui_evaluate` to run |
 
 See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
