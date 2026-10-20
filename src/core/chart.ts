@@ -48,7 +48,7 @@ export async function setSymbol({ symbol, _deps }: any = {}) {
       });
     })()
   `);
-  const ready = await waitForChartReady(symbol);
+  const { ok: ready } = await waitForChartReady(symbol);
   return { success: true, symbol, chart_ready: ready };
 }
 
@@ -60,7 +60,7 @@ export async function setTimeframe({ timeframe, _deps }: any = {}) {
       chart.setResolution(${safeString(timeframe)}, {});
     })()
   `);
-  const ready = await waitForChartReady(null, timeframe);
+  const { ok: ready } = await waitForChartReady(null, timeframe);
   return { success: true, timeframe, chart_ready: ready };
 }
 
