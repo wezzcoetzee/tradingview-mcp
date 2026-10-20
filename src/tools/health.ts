@@ -1,28 +1,39 @@
 import { z } from 'zod';
-import { jsonResult } from './_format.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { defineTool, DESTRUCTIVE, READ_ONLY } from './_format.js';
 import * as core from '../core/health.js';
 
-export function registerHealthTools(server) {
-  server.tool('tv_health_check', 'Check CDP connection to TradingView and return current chart state', {}, async () => {
-    try { return jsonResult(await core.healthCheck()); }
-    catch (err) { return jsonResult({ success: false, error: err.message, hint: 'TradingView is not running with CDP enabled. Use the tv_launch tool to start it automatically.' }, true); }
+export function registerHealthTools(server: McpServer) {
+  defineTool(server, {
+    name: 'tv_health_check',
+    description: 'Check CDP connection to TradingView and return current chart state',
+    annotations: READ_ONLY,
+    run: () => core.healthCheck(),
+    onError: (error) => ({ success: false, error, hint: 'TradingView is not running with CDP enabled. Use the tv_launch tool to start it automatically.' }),
   });
 
-  server.tool('tv_discover', 'Report which known TradingView API paths are available and their methods', {}, async () => {
-    try { return jsonResult(await core.discover()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'tv_discover',
+    description: 'Report which known TradingView API paths are available and their methods',
+    annotations: READ_ONLY,
+    run: () => core.discover(),
   });
 
-  server.tool('tv_ui_state', 'Get current UI state: which panels are open, what buttons are visible/enabled/disabled', {}, async () => {
-    try { return jsonResult(await core.uiState()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'tv_ui_state',
+    description: 'Get current UI state: which panels are open, what buttons are visible/enabled/disabled',
+    annotations: READ_ONLY,
+    run: () => core.uiState(),
   });
 
-  server.tool('tv_launch', 'Launch TradingView Desktop with Chrome DevTools Protocol (remote debugging) enabled. Auto-detects install location on Mac, Windows, and Linux.', {
-    port: z.coerce.number().optional().describe('CDP port (default 9222)'),
-    kill_existing: z.coerce.boolean().optional().describe('Kill existing TradingView instances first (default true)'),
-  }, async ({ port, kill_existing }) => {
-    try { return jsonResult(await core.launch({ port, kill_existing })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'tv_launch',
+    description: 'Launch TradingView Desktop with Chrome DevTools Protocol (remote debugging) enabled. Auto-detects install location on Mac, Windows, and Linux.',
+    inputSchema: {
+      port: z.coerce.number().optional().describe('CDP port (default 9222)'),
+      kill_existing: z.coerce.boolean().optional().describe('Kill existing TradingView instances first (default true)'),
+    },
+    annotations: DESTRUCTIVE,
+    run: ({ port, kill_existing }) => core.launch({ port, kill_existing }),
   });
 }

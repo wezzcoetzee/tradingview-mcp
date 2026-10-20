@@ -1,40 +1,54 @@
 import { z } from 'zod';
-import { jsonResult } from './_format.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { defineTool, DESTRUCTIVE, READ_ONLY, WRITE } from './_format.js';
 import * as core from '../core/drawing.js';
 
-export function registerDrawingTools(server) {
-  server.tool('draw_shape', 'Draw a shape/line on the chart', {
-    shape: z.string().describe('Shape type: horizontal_line, vertical_line, trend_line, rectangle, text'),
-    point: z.object({ time: z.coerce.number(), price: z.coerce.number() }).describe('{ time: unix_timestamp, price: number }'),
-    point2: z.object({ time: z.coerce.number(), price: z.coerce.number() }).optional().describe('Second point for two-point shapes (trend_line, rectangle)'),
-    overrides: z.string().optional().describe('JSON string of style overrides (e.g., \'{"linecolor": "#ff0000", "linewidth": 2}\')'),
-    text: z.string().optional().describe('Text content for text shapes'),
-  }, async ({ shape, point, point2, overrides, text }) => {
-    try { return jsonResult(await core.drawShape({ shape, point, point2, overrides, text })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+export function registerDrawingTools(server: McpServer) {
+  defineTool(server, {
+    name: 'draw_shape',
+    description: 'Draw a shape/line on the chart',
+    inputSchema: {
+      shape: z.string().describe('Shape type: horizontal_line, vertical_line, trend_line, rectangle, text'),
+      point: z.object({ time: z.coerce.number(), price: z.coerce.number() }).describe('{ time: unix_timestamp, price: number }'),
+      point2: z.object({ time: z.coerce.number(), price: z.coerce.number() }).optional().describe('Second point for two-point shapes (trend_line, rectangle)'),
+      overrides: z.string().optional().describe('JSON string of style overrides (e.g., \'{"linecolor": "#ff0000", "linewidth": 2}\')'),
+      text: z.string().optional().describe('Text content for text shapes'),
+    },
+    annotations: WRITE,
+    run: ({ shape, point, point2, overrides, text }) => core.drawShape({ shape, point, point2, overrides, text }),
   });
 
-  server.tool('draw_list', 'List all shapes/drawings on the chart', {}, async () => {
-    try { return jsonResult(await core.listDrawings()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'draw_list',
+    description: 'List all shapes/drawings on the chart',
+    annotations: READ_ONLY,
+    run: () => core.listDrawings(),
   });
 
-  server.tool('draw_clear', 'Remove all drawings from the chart', {}, async () => {
-    try { return jsonResult(await core.clearAll()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'draw_clear',
+    description: 'Remove all drawings from the chart',
+    annotations: DESTRUCTIVE,
+    run: () => core.clearAll(),
   });
 
-  server.tool('draw_remove_one', 'Remove a specific drawing by entity ID', {
-    entity_id: z.string().describe('Entity ID of the drawing to remove (from draw_list)'),
-  }, async ({ entity_id }) => {
-    try { return jsonResult(await core.removeOne({ entity_id })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'draw_remove_one',
+    description: 'Remove a specific drawing by entity ID',
+    inputSchema: {
+      entity_id: z.string().describe('Entity ID of the drawing to remove (from draw_list)'),
+    },
+    annotations: DESTRUCTIVE,
+    run: ({ entity_id }) => core.removeOne({ entity_id }),
   });
 
-  server.tool('draw_get_properties', 'Get properties and points of a specific drawing', {
-    entity_id: z.string().describe('Entity ID of the drawing (from draw_list)'),
-  }, async ({ entity_id }) => {
-    try { return jsonResult(await core.getProperties({ entity_id })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'draw_get_properties',
+    description: 'Get properties and points of a specific drawing',
+    inputSchema: {
+      entity_id: z.string().describe('Entity ID of the drawing (from draw_list)'),
+    },
+    annotations: READ_ONLY,
+    run: ({ entity_id }) => core.getProperties({ entity_id }),
   });
 }

@@ -1,25 +1,34 @@
 import { z } from 'zod';
-import { jsonResult } from './_format.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { defineTool, DESTRUCTIVE, READ_ONLY, WRITE } from './_format.js';
 import * as core from '../core/alerts.js';
 
-export function registerAlertTools(server) {
-  server.tool('alert_create', 'Create a price alert via the TradingView alert dialog. Note: condition must be set manually in the dialog before clicking Create.', {
-    price: z.coerce.number().describe('Price level for the alert'),
-    message: z.string().optional().describe('Alert message'),
-  }, async ({ price, message }) => {
-    try { return jsonResult(await core.create({ price, message })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+export function registerAlertTools(server: McpServer) {
+  defineTool(server, {
+    name: 'alert_create',
+    description: 'Create a price alert via the TradingView alert dialog. Note: condition must be set manually in the dialog before clicking Create.',
+    inputSchema: {
+      price: z.coerce.number().describe('Price level for the alert'),
+      message: z.string().optional().describe('Alert message'),
+    },
+    annotations: WRITE,
+    run: ({ price, message }) => core.create({ price, message }),
   });
 
-  server.tool('alert_list', 'List active alerts', {}, async () => {
-    try { return jsonResult(await core.list()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'alert_list',
+    description: 'List active alerts',
+    annotations: READ_ONLY,
+    run: () => core.list(),
   });
 
-  server.tool('alert_delete', 'Delete all alerts or open context menu for deletion', {
-    delete_all: z.coerce.boolean().optional().describe('Delete all alerts'),
-  }, async ({ delete_all }) => {
-    try { return jsonResult(await core.deleteAlerts({ delete_all })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'alert_delete',
+    description: 'Delete all alerts or open context menu for deletion',
+    inputSchema: {
+      delete_all: z.coerce.boolean().optional().describe('Delete all alerts'),
+    },
+    annotations: DESTRUCTIVE,
+    run: ({ delete_all }) => core.deleteAlerts({ delete_all }),
   });
 }
