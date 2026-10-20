@@ -43,8 +43,8 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 
 ### "Work on Pine Script"
 1. `pine_set_source` → inject code into editor
-2. `pine_smart_compile` → compile with auto-detection + error check
-3. `pine_get_errors` → read compilation errors
+2. `pine_smart_compile` → compile with auto-detection; `has_errors` counts severity 8 only, `warnings` are listed apart, and `compile_confirmed: false` means the markers may be from the previous compile
+3. `pine_get_errors` → read markers (`errors` vs `warnings`, each with `severity`)
 4. `pine_get_console` → read log.info() output
 5. `pine_get_source` → read current code back (WARNING: can be very large for complex scripts)
 6. `pine_save` → save to TradingView cloud

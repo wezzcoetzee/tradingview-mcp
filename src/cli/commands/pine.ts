@@ -33,7 +33,7 @@ register('pine', {
       },
     }],
     ['compile', {
-      description: 'Smart compile: detect button, compile, check errors',
+      description: 'Smart compile: detect button, compile, confirm, report errors and warnings',
       handler: () => core.smartCompile(),
     }],
     ['raw-compile', {

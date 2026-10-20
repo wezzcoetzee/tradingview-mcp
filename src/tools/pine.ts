@@ -23,14 +23,14 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_compile',
-    description: 'Compile / add the current Pine Script to the chart',
+    description: 'Compile / add the current Pine Script to the chart. compile_confirmed is false when no marker or chart change was seen within 6s.',
     annotations: WRITE,
     run: () => core.compile(),
   });
 
   defineTool(server, {
     name: 'pine_get_errors',
-    description: 'Get Pine Script compilation errors from Monaco markers',
+    description: 'Get Pine Script compilation markers from Monaco. errors are severity 8 only and set has_errors; warnings (severity < 8) are listed separately and do not fail the build.',
     annotations: READ_ONLY,
     run: () => core.getErrors(),
   });
@@ -51,7 +51,7 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_smart_compile',
-    description: 'Intelligent compile: detects button, compiles, checks errors, reports study changes',
+    description: 'Intelligent compile: detects button, compiles, waits for markers or chart studies to change, reports errors, warnings and study changes. compile_confirmed is false (with a note) when the result may belong to the previous compile.',
     annotations: WRITE,
     run: () => core.smartCompile(),
   });
