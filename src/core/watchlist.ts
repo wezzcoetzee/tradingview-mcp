@@ -62,7 +62,16 @@ export async function get() {
   };
 }
 
-export async function add({ symbol }: any = {}) {
+/** Compares `EXCHANGE:TICKER` input to a listed symbol; falls back to the ticker part when one side omits the exchange. */
+export function symbolMatches(requested: string, listed: string): boolean {
+  const want = requested.trim().toUpperCase();
+  const have = listed.trim().toUpperCase();
+  if (want === have) return true;
+  const ticker = (s: string) => s.slice(s.indexOf(':') + 1);
+  return (!want.includes(':') || !have.includes(':')) && ticker(want) === ticker(have);
+}
+
+export async function add({ symbol }: { symbol: string }) {
   // Use keyboard shortcut to open symbol search in watchlist, type symbol, press Enter
   const c = await getClient();
 
@@ -115,6 +124,18 @@ export async function add({ symbol }: any = {}) {
   if (!addClicked?.found) throw new Error('Add symbol button not found in watchlist panel');
   await new Promise(r => setTimeout(r, 300));
 
+  // Only type if the focused element is a text input inside the watchlist panel or a dialog
+  const inputFocused = await evaluate(`
+    (function() {
+      var el = document.activeElement;
+      if (!el || el.tagName !== 'INPUT') return false;
+      return !!el.closest('[class*="layout__area--right"], [role="dialog"]');
+    })()
+  `);
+  if (!inputFocused) {
+    return { success: false, symbol, error: 'Watchlist search input is not focused; nothing was typed' };
+  }
+
   // Type the symbol into the search input
   await c.Input.insertText({ text: symbol });
   await new Promise(r => setTimeout(r, 500));
@@ -127,6 +148,12 @@ export async function add({ symbol }: any = {}) {
   // Press Escape to close search
   await c.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape' });
+
+  await new Promise(r => setTimeout(r, 500));
+  const { symbols } = await get();
+  if (!symbols.some((s: { symbol: string }) => symbolMatches(symbol, s.symbol))) {
+    return { success: false, symbol, error: 'Symbol not found in the watchlist after adding' };
+  }
 
   return { success: true, symbol, action: 'added' };
 }
