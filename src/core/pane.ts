@@ -137,6 +137,20 @@ export async function focus({ index }: any = {}) {
   `);
 
   if (result?.error) throw new Error(result.error);
+
+  // Same definition of "active" as list(): the active widget is the one at this index
+  const { ok, value } = await waitFor<number>(
+    `(function() {
+      var active = window.TradingViewApi._activeChartWidgetWV.value();
+      var all = ${CWC}.getAll();
+      for (var i = 0; i < all.length; i++) if (active._chartWidget && all[i] === active._chartWidget) return i;
+      return -1;
+    })()`,
+    (current) => current === idx,
+  );
+  if (!ok) {
+    return { success: false, error: 'Pane did not become active', expected: idx, seen: value ?? null };
+  }
   return { success: true, focused_index: result.focused, total_panes: result.total };
 }
 
@@ -151,8 +165,8 @@ export async function setSymbol({ index, symbol }: any = {}) {
   }
 
   // Focus the target pane first
-  await focus({ index: idx });
-  await new Promise(r => setTimeout(r, 300));
+  const focused = await focus({ index: idx });
+  if (!focused.success) return { ...focused, index: idx };
 
   await evaluate(`window.TradingViewApi._activeChartWidgetWV.value().setSymbol(${safeString(symbol)}, {})`);
 

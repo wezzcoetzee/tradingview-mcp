@@ -39,7 +39,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `chart_set_type` → switch chart style (Candles, HeikinAshi, Line, Area, Renko, etc.)
 - `chart_manage_indicator` → add or remove studies (use full name: "Relative Strength Index", not "RSI")
 - `chart_scroll_to_date` → jump to a date (ISO format: "2025-01-15")
-- `chart_set_visible_range` → zoom to exact date range (unix timestamps)
+- `chart_set_visible_range` → zoom to exact date range (unix timestamps); `partially_loaded: true` means only the loaded subset was shown
 
 ### "Work on Pine Script"
 1. `pine_set_source` → inject code into editor

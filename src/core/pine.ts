@@ -519,7 +519,7 @@ export async function save() {
       error: 'Save could not be confirmed: the Pine editor still reports unsaved changes. The script may not have been saved.',
     };
   }
-  return { success: true, script_name, action: dialogHandled ? 'saved_with_dialog' : `${MOD === 4 ? 'Cmd' : 'Ctrl'}+S_dispatched` };
+  return { success: true, script_name, action: dialogHandled ? 'saved_with_dialog' : 'saved' };
 }
 
 export async function getConsole() {
