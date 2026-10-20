@@ -1,4 +1,4 @@
-import { register } from '../router.js';
+import { register, parseNumber } from '../router.js';
 import * as core from '../../core/drawing.js';
 
 register('draw', {
@@ -16,8 +16,9 @@ register('draw', {
         overrides: { type: 'string', description: 'JSON style overrides' },
       },
       handler: (opts) => {
-        const point = { time: Number(opts.time), price: Number(opts.price) };
-        const point2 = opts.price2 ? { time: Number(opts.time2), price: Number(opts.price2) } : undefined;
+        const point = { time: parseNumber(opts.time, 'time'), price: parseNumber(opts.price, 'price') };
+        const hasSecondPoint = opts.time2 !== undefined || opts.price2 !== undefined;
+        const point2 = hasSecondPoint ? { time: parseNumber(opts.time2, 'time2'), price: parseNumber(opts.price2, 'price2') } : undefined;
         return core.drawShape({ shape: opts.type || 'horizontal_line', point, point2, overrides: opts.overrides, text: opts.text });
       },
     }],
@@ -27,11 +28,17 @@ register('draw', {
     }],
     ['get', {
       description: 'Get properties of a drawing',
-      handler: (opts, positionals) => core.getProperties({ entity_id: positionals[0] }),
+      handler: (opts, positionals) => {
+        if (!positionals[0]) throw new Error('Entity ID required. Usage: tv draw get <id>');
+        return core.getProperties({ entity_id: positionals[0] });
+      },
     }],
     ['remove', {
       description: 'Remove a drawing by entity ID',
-      handler: (opts, positionals) => core.removeOne({ entity_id: positionals[0] }),
+      handler: (opts, positionals) => {
+        if (!positionals[0]) throw new Error('Entity ID required. Usage: tv draw remove <id>');
+        return core.removeOne({ entity_id: positionals[0] });
+      },
     }],
     ['clear', {
       description: 'Remove all drawings',
