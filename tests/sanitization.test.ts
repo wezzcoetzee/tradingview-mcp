@@ -25,7 +25,8 @@ function mockDeps(overrides = {}) {
     _deps: {
       evaluate,
       evaluateAsync: evaluate,
-      waitForChartReady: async () => true,
+      waitForChartReady: async () => ({ ok: true, value: undefined }),
+      waitOpts: { timeout: 100, interval: 10 },
       getChartApi: async () => 'window.__api',
       ...overrides,
     },
@@ -160,7 +161,14 @@ describe('chart.js — sanitized evaluate calls', () => {
   });
 
   it('setType validates chart type range 0-9', async () => {
-    const { _deps } = mockDeps();
+    let current: number | undefined;
+    const evaluate = async (expr: string) => {
+      const set = /setChartType\((\d+)\)/.exec(expr);
+      if (set) current = Number(set[1]);
+      if (expr.includes('.chartType()')) return current;
+      return undefined;
+    };
+    const { _deps } = mockDeps({ evaluate });
     // Valid names
     for (const name of ['Candles', 'Line', 'Area', 'HeikinAshi']) {
       const r = await setType({ chart_type: name, _deps });
@@ -204,9 +212,18 @@ describe('chart.js — sanitized evaluate calls', () => {
   });
 
   it('manageIndicator remove uses safeString for entity_id', async () => {
-    const { _deps, evaluate } = mockDeps();
-    await manageIndicator({ action: 'remove', entity_id: "abc123", _deps });
-    const call = evaluate.calls.find(c => c.includes('removeEntity'));
+    const calls: string[] = [];
+    let removed = false;
+    const evaluate = async (expr: string) => {
+      calls.push(expr);
+      if (expr.includes('removeEntity')) { removed = true; return undefined; }
+      if (expr.includes('getAllStudies')) return removed ? [] : ['abc123'];
+      return undefined;
+    };
+    const { _deps } = mockDeps({ evaluate });
+    const result = await manageIndicator({ action: 'remove', entity_id: "abc123", _deps });
+    assert.equal(result.success, true);
+    const call = calls.find(c => c.includes('removeEntity'));
     assert.ok(call.includes('"abc123"'), 'entity_id via safeString');
   });
 
@@ -224,6 +241,10 @@ describe('chart.js — sanitized evaluate calls', () => {
 
   it('setVisibleRange passes valid numbers to evaluate', async () => {
     const { _deps, evaluate } = mockDeps();
+    _deps.evaluate = (async (expr: string) => {
+      evaluate.calls.push(expr);
+      return expr.includes('zoomToBarsRange') ? { found: true, loaded_from: 0, loaded_to: 2e9 } : undefined;
+    }) as any;
     await setVisibleRange({ from: 1700000000, to: 1700100000, _deps });
     const call = evaluate.calls.find(c => c.includes('zoomToBarsRange'));
     assert.ok(call, 'zoomToBarsRange called');

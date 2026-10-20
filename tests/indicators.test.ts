@@ -48,6 +48,13 @@ describe('setInputs — Path A (Pine-script studies)', () => {
     );
   });
 
+  it('throws a clear message when inputs is not valid JSON', async () => {
+    await assert.rejects(
+      () => setInputs({ entity_id: 'x', inputs: '{length: 50', _deps: { evaluate: async () => ({}) } }),
+      /inputs must be a JSON object/,
+    );
+  });
+
   it('throws when inputs is empty', async () => {
     await assert.rejects(
       () => setInputs({ entity_id: 'x', inputs: {} }),
@@ -74,19 +81,21 @@ describe('setInputs — Path B (built-in studies with property tree)', () => {
     const evaluate = makeEvaluate(() => ({
       updated_inputs: {},
       available_inputs: ['length', 'source'],
+      unknown_keys: ['typo_key'],
     }));
 
     const result = await setInputs({ entity_id: 'builtin2', inputs: { typo_key: 99 }, _deps: { evaluate } });
 
-    assert.equal(result.success, true);
-    assert.deepEqual(result.updated_inputs, {});
+    assert.equal(result.success, false);
+    assert.match(result.error, /No inputs were updated/);
+    assert.deepEqual(result.unknown_keys, ['typo_key']);
     assert.ok(Array.isArray(result.available_inputs), 'available_inputs should be an array');
     assert.ok(result.available_inputs.includes('length'), 'should list discovered keys for debugging');
   });
 });
 
 describe('setInputs — neither path produces descriptors', () => {
-  it('returns empty updated_inputs but still includes available_inputs array', async () => {
+  it('fails but still includes available_inputs array', async () => {
     const evaluate = makeEvaluate(() => ({
       updated_inputs: {},
       available_inputs: [],
@@ -94,8 +103,7 @@ describe('setInputs — neither path produces descriptors', () => {
 
     const result = await setInputs({ entity_id: 'unknown1', inputs: { length: 20 }, _deps: { evaluate } });
 
-    assert.equal(result.success, true);
-    assert.deepEqual(result.updated_inputs, {});
+    assert.equal(result.success, false);
     assert.ok(Array.isArray(result.available_inputs));
   });
 

@@ -2,6 +2,7 @@
  * Core indicator settings logic.
  */
 import { evaluate as _evaluate, safeString } from '../connection.js';
+import { parseJsonObject } from './json.js';
 
 const CHART_API = 'window.TradingViewApi._activeChartWidgetWV.value()';
 
@@ -9,11 +10,20 @@ function _resolve(deps) {
   return { evaluate: deps?.evaluate || _evaluate };
 }
 
-export async function setInputs({ entity_id, inputs: inputsRaw, _deps }: any = {}) {
+export interface SetInputsResult {
+  success: boolean;
+  entity_id: string;
+  error?: string;
+  updated_inputs?: Record<string, unknown>;
+  available_inputs: string[];
+  unknown_keys?: string[];
+}
+
+export async function setInputs({ entity_id, inputs: inputsRaw, _deps }: any = {}): Promise<SetInputsResult> {
   const { evaluate } = _resolve(_deps);
-  const inputs = inputsRaw ? (typeof inputsRaw === 'string' ? JSON.parse(inputsRaw) : inputsRaw) : undefined;
   if (!entity_id) throw new Error('entity_id is required. Use chart_get_state to find study IDs.');
-  if (!inputs || typeof inputs !== 'object' || Object.keys(inputs).length === 0) {
+  const inputs = inputsRaw ? parseJsonObject(inputsRaw, 'inputs') : undefined;
+  if (!inputs || Object.keys(inputs).length === 0) {
     throw new Error('inputs must be a non-empty object, e.g. { length: 50 }');
   }
 
@@ -62,12 +72,22 @@ export async function setInputs({ entity_id, inputs: inputsRaw, _deps }: any = {
   `);
 
   if (result && result.error) throw new Error(result.error);
+  const unknown = result.unknown_keys?.length ? { unknown_keys: result.unknown_keys } : {};
+  if (Object.keys(result.updated_inputs).length === 0) {
+    return {
+      success: false,
+      entity_id,
+      error: 'No inputs were updated. Check available_inputs for valid names.',
+      available_inputs: result.available_inputs,
+      ...unknown,
+    };
+  }
   return {
     success: true,
     entity_id,
     updated_inputs: result.updated_inputs,
     available_inputs: result.available_inputs,
-    ...(result.unknown_keys && result.unknown_keys.length > 0 ? { unknown_keys: result.unknown_keys } : {}),
+    ...unknown,
   };
 }
 

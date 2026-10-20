@@ -2,16 +2,22 @@
  * Core drawing logic.
  */
 import { evaluate as _evaluate, getChartApi as _getChartApi, safeString, requireFinite } from '../connection.js';
+import { waitFor } from '../wait.js';
+import { parseJsonObject } from './json.js';
 
 function _resolve(deps) {
-  return { evaluate: deps?.evaluate || _evaluate, getChartApi: deps?.getChartApi || _getChartApi };
+  const evaluate = deps?.evaluate || _evaluate;
+  return { evaluate, getChartApi: deps?.getChartApi || _getChartApi, waitOpts: { evaluate, ...deps?.waitOpts } };
 }
 
 export async function drawShape({ shape, point, point2, overrides: overridesRaw, text, _deps }: any = {}) {
-  const { evaluate, getChartApi } = _resolve(_deps);
-  const overrides = overridesRaw ? (typeof overridesRaw === 'string' ? JSON.parse(overridesRaw) : overridesRaw) : {};
+  const { evaluate, getChartApi, waitOpts } = _resolve(_deps);
+  const overrides = overridesRaw ? parseJsonObject(overridesRaw, 'overrides') : {};
+  if (!point || typeof point !== 'object') {
+    throw new Error('point is required, e.g. {"time": 1700000000, "price": 100}');
+  }
   const apiPath = await getChartApi();
-  const overridesStr = JSON.stringify(overrides || {});
+  const overridesStr = JSON.stringify(overrides);
   const textStr = text ? JSON.stringify(text) : '""';
 
   const p1time = requireFinite(point.time, 'point.time');
@@ -37,11 +43,14 @@ export async function drawShape({ shape, point, point2, overrides: overridesRaw,
     `);
   }
 
-  await new Promise(r => setTimeout(r, 200));
-  const after = await evaluate(`${apiPath}.getAllShapes().map(function(s) { return s.id; })`);
+  const { value: after } = await waitFor<string[]>(
+    `${apiPath}.getAllShapes().map(function(s) { return s.id; })`,
+    (ids) => ids.some(id => !(before || []).includes(id)),
+    { timeout: 2000, ...waitOpts },
+  );
   const newId = (after || []).find(id => !(before || []).includes(id)) || null;
-  const result = { entity_id: newId };
-  return { success: true, shape, entity_id: result?.entity_id };
+  if (!newId) return { success: false, shape, entity_id: null, error: 'Shape was not created. Check the shape name and points.' };
+  return { success: true, shape, entity_id: newId };
 }
 
 export async function listDrawings({ _deps }: any = {}) {
@@ -106,7 +115,10 @@ export async function removeOne({ entity_id, _deps }: any = {}) {
     })()
   `);
   if (result?.error) throw new Error(result.error);
-  return { success: true, entity_id: result?.entity_id, removed: result?.removed, remaining_shapes: result?.remaining_shapes };
+  if (!result?.removed) {
+    return { success: false, entity_id, removed: false, error: 'Shape is still present after removal' };
+  }
+  return { success: true, entity_id: result.entity_id, removed: true, remaining_shapes: result.remaining_shapes };
 }
 
 export async function clearAll({ _deps }: any = {}) {

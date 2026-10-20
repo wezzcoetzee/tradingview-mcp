@@ -142,4 +142,42 @@ describe('drawShape() — sanity', () => {
     assert.equal(result.success, true);
     assert.equal(result.entity_id, 'new-id');
   });
+
+  const fastDeps = (evaluate: (expr: string) => unknown) => ({
+    evaluate: async (expr: string) => evaluate(expr),
+    getChartApi: async () => 'window.__api',
+    waitOpts: { timeout: 50, interval: 10 },
+  });
+
+  it('fails when no new shape appears', async () => {
+    const result = await drawShape({ shape: 'horizontal_line', point: { time: 1, price: 2 }, _deps: fastDeps(() => []) });
+    assert.equal(result.success, false);
+    assert.equal(result.entity_id, null);
+  });
+
+  it('throws a clear message when point is missing', async () => {
+    await assert.rejects(
+      drawShape({ shape: 'horizontal_line', _deps: fastDeps(() => []) }),
+      /point is required/,
+    );
+  });
+
+  it('throws a clear message when overrides is not a JSON object', async () => {
+    await assert.rejects(
+      drawShape({ shape: 'horizontal_line', point: { time: 1, price: 2 }, overrides: '{bad', _deps: fastDeps(() => []) }),
+      /overrides must be a JSON object/,
+    );
+  });
+});
+
+describe('removeOne() — truthful result', () => {
+  it('fails when the shape is still present after removal', async () => {
+    const _deps = {
+      evaluate: async () => ({ removed: false, entity_id: 'xyz', remaining_shapes: 1 }),
+      getChartApi: async () => 'window.__api',
+    };
+    const result = await removeOne({ entity_id: 'xyz', _deps });
+    assert.equal(result.success, false);
+    assert.equal(result.removed, false);
+  });
 });

@@ -2,7 +2,8 @@
  * Core chart control logic.
  */
 import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, safeString, requireFinite } from '../connection.js';
-import { waitForChartReady as _waitForChartReady } from '../wait.js';
+import { waitFor, waitForChartReady as _waitForChartReady } from '../wait.js';
+import { parseJsonObject } from './json.js';
 
 const CHART_API = 'window.TradingViewApi._activeChartWidgetWV.value()';
 
@@ -11,6 +12,7 @@ function _resolve(deps) {
     evaluate: deps?.evaluate || _evaluate,
     evaluateAsync: deps?.evaluateAsync || _evaluateAsync,
     waitForChartReady: deps?.waitForChartReady || _waitForChartReady,
+    waitOpts: { evaluate: deps?.evaluate || _evaluate, ...deps?.waitOpts },
   };
 }
 
@@ -38,34 +40,30 @@ export async function getState({ _deps }: any = {}) {
 }
 
 export async function setSymbol({ symbol, _deps }: any = {}) {
-  const { evaluateAsync, waitForChartReady } = _resolve(_deps);
-  await evaluateAsync(`
-    (function() {
-      var chart = ${CHART_API};
-      return new Promise(function(resolve) {
-        chart.setSymbol(${safeString(symbol)}, {});
-        setTimeout(resolve, 500);
-      });
-    })()
-  `);
-  const { ok: ready } = await waitForChartReady(symbol);
-  return { success: true, symbol, chart_ready: ready };
+  const { evaluate, waitForChartReady } = _resolve(_deps);
+  await evaluate(`${CHART_API}.setSymbol(${safeString(symbol)}, {})`);
+  const { ok, value } = await waitForChartReady(symbol);
+  if (!ok) {
+    return { success: false, error: 'Chart did not switch to the requested symbol', expected: symbol, seen: value?.symbol ?? null };
+  }
+  return { success: true, symbol, chart_ready: true };
 }
 
 export async function setTimeframe({ timeframe, _deps }: any = {}) {
   const { evaluate, waitForChartReady } = _resolve(_deps);
-  await evaluate(`
-    (function() {
-      var chart = ${CHART_API};
-      chart.setResolution(${safeString(timeframe)}, {});
-    })()
-  `);
-  const { ok: ready } = await waitForChartReady(null, timeframe);
-  return { success: true, timeframe, chart_ready: ready };
+  await evaluate(`${CHART_API}.setResolution(${safeString(timeframe)}, {})`);
+  const { ok, value } = await waitForChartReady(null, timeframe);
+  if (!ok) {
+    return { success: false, error: 'Chart did not switch to the requested timeframe', expected: timeframe, seen: value?.resolution ?? null };
+  }
+  return { success: true, timeframe, chart_ready: true };
 }
 
 export async function setType({ chart_type, _deps }: any = {}) {
-  const { evaluate } = _resolve(_deps);
+  const { evaluate, waitOpts } = _resolve(_deps);
+  if (chart_type == null || String(chart_type).trim() === '') {
+    throw new Error('chart_type is required. Use a name (Candles, Line, etc.) or number (0-9).');
+  }
   const typeMap = {
     'Bars': 0, 'Candles': 1, 'Line': 2, 'Area': 3,
     'Renko': 4, 'Kagi': 5, 'PointAndFigure': 6, 'LineBreak': 7,
@@ -75,53 +73,59 @@ export async function setType({ chart_type, _deps }: any = {}) {
   if (isNaN(typeNum) || typeNum < 0 || typeNum > 9 || !Number.isInteger(typeNum)) {
     throw new Error(`Unknown chart type: ${chart_type}. Use a name (Candles, Line, etc.) or number (0-9).`);
   }
-  await evaluate(`
-    (function() {
-      var chart = ${CHART_API};
-      chart.setChartType(${typeNum});
-    })()
-  `);
+  await evaluate(`${CHART_API}.setChartType(${typeNum})`);
+  const { ok, value } = await waitFor<number>(`${CHART_API}.chartType()`, (v) => v === typeNum, { timeout: 3000, ...waitOpts });
+  if (!ok) {
+    return { success: false, error: 'Chart type did not change', expected: typeNum, seen: value ?? null };
+  }
   return { success: true, chart_type, type_num: typeNum };
 }
 
+const STUDY_IDS = `${CHART_API}.getAllStudies().map(function(s) { return s.id; })`;
+
 export async function manageIndicator({ action, indicator, entity_id, inputs: inputsRaw, _deps }: any = {}) {
-  const { evaluate } = _resolve(_deps);
-  const inputs = inputsRaw ? (typeof inputsRaw === 'string' ? JSON.parse(inputsRaw) : inputsRaw) : undefined;
+  const { evaluate, evaluateAsync, waitOpts } = _resolve(_deps);
+  const inputs = inputsRaw ? parseJsonObject(inputsRaw, 'inputs') : undefined;
 
   if (action === 'add') {
-    const before = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
-    await evaluate(`
-      (function() {
-        var chart = ${CHART_API};
-        chart.createStudy(${safeString(indicator)}, false, false);
+    const beforeIds: string[] = (await evaluate(STUDY_IDS)) || [];
+    // createStudy returns a promise; await it in the page so rejections surface here.
+    const created = await evaluateAsync(`
+      (async function() {
+        try { await ${CHART_API}.createStudy(${safeString(indicator)}, false, false); return {}; }
+        catch (e) { return { error: String((e && e.message) || e) }; }
       })()
     `);
+    if (created?.error) throw new Error(`Failed to add indicator "${indicator}": ${created.error}`);
 
-    // Poll for the new study id rather than relying on a fixed sleep —
-    // slow charts may take longer than 1.5s; fast charts shouldn't pay for it.
-    const beforeIds = before || [];
-    let newIds = [];
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 200));
-      const after = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
-      newIds = (after || []).filter(id => !beforeIds.includes(id));
-      if (newIds.length > 0) break;
-    }
+    const { value: after } = await waitFor<string[]>(
+      STUDY_IDS,
+      (ids) => ids.some(id => !beforeIds.includes(id)),
+      { timeout: 5000, ...waitOpts },
+    );
+    const newIds = (after || []).filter(id => !beforeIds.includes(id));
     const newId = newIds[0] || null;
-    if (newId && inputs && Object.keys(inputs).length > 0) {
-      const { setInputs } = await import('./indicators.js');
-      await setInputs({ entity_id: newId, inputs, _deps });
+    if (!newId) {
+      return { success: false, action: 'add', indicator, error: 'Indicator did not appear on the chart', entity_id: null, new_study_count: 0 };
     }
-    return { success: newIds.length > 0, action: 'add', indicator, entity_id: newId, new_study_count: newIds.length };
+
+    if (inputs && Object.keys(inputs).length > 0) {
+      const { setInputs } = await import('./indicators.js');
+      const applied = await setInputs({ entity_id: newId, inputs, _deps }).catch((e: Error) => ({ success: false, error: e.message }));
+      if (!applied.success) {
+        return { success: false, action: 'add', indicator, entity_id: newId, new_study_count: newIds.length, inputs_error: applied.error };
+      }
+    }
+    return { success: true, action: 'add', indicator, entity_id: newId, new_study_count: newIds.length };
   } else if (action === 'remove') {
     if (!entity_id) throw new Error('entity_id required for remove action. Use chart_get_state to find study IDs.');
-    await evaluate(`
-      (function() {
-        var chart = ${CHART_API};
-        chart.removeEntity(${safeString(entity_id)});
-      })()
-    `);
+    const existing: string[] = (await evaluate(STUDY_IDS)) || [];
+    if (!existing.includes(entity_id)) {
+      return { success: false, action: 'remove', entity_id, error: `Study not found: ${entity_id}. Use chart_get_state to find study IDs.` };
+    }
+    await evaluate(`${CHART_API}.removeEntity(${safeString(entity_id)})`);
+    const { ok } = await waitFor<string[]>(STUDY_IDS, (ids) => !ids.includes(entity_id), { timeout: 3000, ...waitOpts });
+    if (!ok) return { success: false, action: 'remove', entity_id, error: 'Study is still on the chart after removal' };
     return { success: true, action: 'remove', entity_id };
   } else {
     throw new Error('action must be "add" or "remove"');
@@ -138,11 +142,11 @@ export async function getVisibleRange() {
   return { success: true, visible_range: result.visible_range, bars_range: result.bars_range };
 }
 
-export async function setVisibleRange({ from, to, _deps }: any = {}) {
-  const { evaluate } = _resolve(_deps);
-  const f = requireFinite(from, 'from');
-  const t = requireFinite(to, 'to');
-  await evaluate(`
+interface ZoomResult { found: boolean; loaded_from: number | null; loaded_to: number | null }
+
+/** Zoom to the loaded bars inside [from, to]; does nothing when no loaded bar falls in the range. */
+async function zoomToTimeRange(evaluate: (expr: string) => Promise<any>, from: number, to: number): Promise<ZoomResult> {
+  return evaluate(`
     (function() {
       var chart = ${CHART_API};
       var m = chart._chartWidget.model();
@@ -150,16 +154,36 @@ export async function setVisibleRange({ from, to, _deps }: any = {}) {
       var bars = m.mainSeries().bars();
       var startIdx = bars.firstIndex();
       var endIdx = bars.lastIndex();
-      var fromIdx = startIdx, toIdx = endIdx;
-      var fromFound = false;
+      var first = bars.valueAt(startIdx), last = bars.valueAt(endIdx);
+      var fromIdx = -1, toIdx = -1;
       for (var i = startIdx; i <= endIdx; i++) {
         var v = bars.valueAt(i);
-        if (v && v[0] >= ${f} && !fromFound) { fromIdx = i; fromFound = true; }
-        if (v && v[0] <= ${t}) toIdx = i;
+        if (!v || v[0] < ${from} || v[0] > ${to}) continue;
+        if (fromIdx < 0) fromIdx = i;
+        toIdx = i;
       }
-      ts.zoomToBarsRange(fromIdx, toIdx);
+      if (fromIdx >= 0) ts.zoomToBarsRange(fromIdx, toIdx);
+      return { found: fromIdx >= 0, loaded_from: first ? first[0] : null, loaded_to: last ? last[0] : null };
     })()
   `);
+}
+
+function notInLoadedRange(requested: object, zoom: ZoomResult) {
+  return {
+    success: false,
+    error: 'not_in_loaded_range',
+    message: 'No loaded bars fall in the requested range. Scroll further back on the chart to load more history.',
+    requested,
+    loaded: { from: zoom.loaded_from, to: zoom.loaded_to },
+  };
+}
+
+export async function setVisibleRange({ from, to, _deps }: any = {}) {
+  const { evaluate } = _resolve(_deps);
+  const f = requireFinite(from, 'from');
+  const t = requireFinite(to, 'to');
+  const zoom = await zoomToTimeRange(evaluate, f, t);
+  if (!zoom.found) return notInLoadedRange({ from, to }, zoom);
   await new Promise(r => setTimeout(r, 500));
   const actual = await evaluate(`
     (function() {
@@ -171,44 +195,36 @@ export async function setVisibleRange({ from, to, _deps }: any = {}) {
   return { success: true, requested: { from, to }, actual: actual || { from: 0, to: 0 } };
 }
 
-export async function scrollToDate({ date }: any = {}) {
-  let timestamp;
-  if (/^\d+$/.test(date)) timestamp = Number(date);
-  else timestamp = Math.floor(new Date(date).getTime() / 1000);
+const UNIT_SECONDS = { S: 1, D: 86400, W: 604800, M: 2592000 };
+
+/** Seconds per bar for a TradingView resolution: "5" and "240" are minutes, "D"/"2D"/"3M"/"12M" are day/week/month multiples. */
+export function secondsPerBar(resolution: string): number {
+  const res = String(resolution).toUpperCase();
+  const unit = /^(\d*)([SDWM])$/.exec(res);
+  if (unit) return (unit[1] ? Number(unit[1]) : 1) * UNIT_SECONDS[unit[2]];
+  if (/^\d+T$/.test(res)) return 1;
+  const mins = parseInt(res, 10);
+  return isNaN(mins) ? 60 : mins * 60;
+}
+
+export async function scrollToDate({ date, _deps }: any = {}) {
+  const { evaluate } = _resolve(_deps);
+  let timestamp: number;
+  if (/^\d+$/.test(date)) {
+    // 13-digit values are milliseconds
+    timestamp = String(date).length >= 13 ? Math.floor(Number(date) / 1000) : Number(date);
+  } else {
+    timestamp = Math.floor(new Date(date).getTime() / 1000);
+  }
   if (isNaN(timestamp)) throw new Error(`Could not parse date: ${date}. Use ISO format (2024-01-15) or unix timestamp.`);
 
-  const resolution = await _evaluate(`${CHART_API}.resolution()`);
-  let secsPerBar = 60;
-  const res = String(resolution);
-  if (res === 'D' || res === '1D') secsPerBar = 86400;
-  else if (res === 'W' || res === '1W') secsPerBar = 604800;
-  else if (res === 'M' || res === '1M') secsPerBar = 2592000;
-  else if (/^\d+S$/i.test(res)) secsPerBar = parseInt(res, 10);
-  else if (/^\d+T$/i.test(res)) secsPerBar = 1;
-  else { const mins = parseInt(res, 10); if (!isNaN(mins)) secsPerBar = mins * 60; }
-
-  const halfWindow = 25 * secsPerBar;
+  const resolution = await evaluate(`${CHART_API}.resolution()`);
+  const halfWindow = 25 * secondsPerBar(resolution);
   const from = requireFinite(timestamp - halfWindow, 'from');
   const to = requireFinite(timestamp + halfWindow, 'to');
 
-  await _evaluate(`
-    (function() {
-      var chart = ${CHART_API};
-      var m = chart._chartWidget.model();
-      var ts = m.timeScale();
-      var bars = m.mainSeries().bars();
-      var startIdx = bars.firstIndex();
-      var endIdx = bars.lastIndex();
-      var fromIdx = startIdx, toIdx = endIdx;
-      var fromFound = false;
-      for (var i = startIdx; i <= endIdx; i++) {
-        var v = bars.valueAt(i);
-        if (v && v[0] >= ${from} && !fromFound) { fromIdx = i; fromFound = true; }
-        if (v && v[0] <= ${to}) toIdx = i;
-      }
-      ts.zoomToBarsRange(fromIdx, toIdx);
-    })()
-  `);
+  const zoom = await zoomToTimeRange(evaluate, from, to);
+  if (!zoom.found) return notInLoadedRange({ date, centered_on: timestamp, window: { from, to } }, zoom);
   await new Promise(r => setTimeout(r, 500));
   return { success: true, date, centered_on: timestamp, resolution, window: { from, to } };
 }
