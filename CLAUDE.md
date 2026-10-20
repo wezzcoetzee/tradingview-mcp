@@ -1,6 +1,6 @@
 # TradingView MCP — Claude Instructions
 
-78 tools for reading and controlling a live TradingView Desktop chart via CDP (port 9222).
+Tools for reading and controlling a live TradingView Desktop chart via CDP (port 9222).
 
 ## Decision Tree — Which Tool When
 
@@ -39,17 +39,18 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `chart_set_type` → switch chart style (Candles, HeikinAshi, Line, Area, Renko, etc.)
 - `chart_manage_indicator` → add or remove studies (use full name: "Relative Strength Index", not "RSI")
 - `chart_scroll_to_date` → jump to a date (ISO format: "2025-01-15"); `success:false` with `expected`/`seen` if the chart did not settle there; `partially_loaded: true` (plus loaded `from`/`to`) if only part of the window has loaded bars
-- `chart_set_visible_range` → zoom to exact date range (unix timestamps); same `success:false` (`expected`/`seen`) and `partially_loaded` behaviour
+- `chart_set_visible_range` → zoom to exact date range (unix seconds, not milliseconds); same `success:false` (`expected`/`seen`) and `partially_loaded` behaviour
 
 ### "Work on Pine Script"
 1. `pine_set_source` → inject code into editor
-2. `pine_smart_compile` → compile with auto-detection; `has_errors` counts severity 8 only, `warnings` are listed apart, and `compile_confirmed: false` means the markers may be from the previous compile
+2. `pine_smart_compile` → the default compile (`pine_compile` is a raw button click with no error report); `has_errors` counts severity 8 only, `warnings` are listed apart, and `compile_confirmed: false` means the markers may be from the previous compile
 3. `pine_get_errors` → read markers (`errors` vs `warnings`, each with `severity`)
 4. `pine_get_console` → read log.info() output (deduplicated, newest 50 by default; `limit` to change)
 5. `pine_get_source` → read current code back (WARNING: can be very large; use `from_line`/`to_line`/`max_chars`, `total_lines` tells you the size)
 6. `pine_save` → save to TradingView cloud
 7. `pine_new` → replace the editor with a blank indicator/strategy/library (refuses if a saved script is open unless `replace_current: true`)
-8. `pine_open` → load a saved script by name into the editor (same `replace_current` guard)
+8. `pine_open` → load a saved script by name into the editor (same `replace_current` guard); `pine_list_scripts` lists saved scripts
+9. `pine_analyze` (offline lint) and `pine_check` (server-side compile, a network call) take a `source` argument and ignore the editor
 
 ### "Practice trading with replay"
 1. `replay_start` with `date: "2025-03-01"` → enter replay mode
@@ -61,10 +62,20 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 
 ### "Screen multiple symbols"
 - `batch_run` with `symbols: ["ES1!", "NQ1!", "YM1!"]` and `action: "screenshot"`, `"get_ohlcv"` (summary) or `"get_strategy_results"`; restores the original symbol/timeframe
+- Progress notifications are sent when the client provides a progress token (`batch_run`, and per bar in `replay_step`)
 - `data_get_trades` returns the latest trades with `total`; pass `offset` to page from the oldest
 
+### "Strategy Tester"
+- `data_get_strategy_results` → performance metrics; `data_get_trades` → trade list; `data_get_equity` → equity curve (`max_points`, summary)
+
+### "Panes, tabs, watchlist, symbols"
+- `pane_list`, `pane_set_layout`, `pane_focus`, `pane_set_symbol` → multi-chart grids
+- `tab_list`, `tab_new`, `tab_close`, `tab_switch` → chart tabs
+- `watchlist_get`, `watchlist_add`; `symbol_info` (current symbol), `symbol_search` (find tickers); `layout_list`, `layout_switch`
+- `indicator_set_inputs`, `indicator_toggle_visibility` → tweak studies already on the chart
+
 ### "Draw on the chart"
-- `draw_shape` → horizontal_line, trend_line, rectangle, text (pass point + optional point2; `more_points` for channels/pitchforks/fib, `lock: true` to lock)
+- `draw_shape` → horizontal_line, trend_line, rectangle, text (pass point + optional point2, times in unix seconds; `more_points` for channels/pitchforks/fib, `lock: true` to lock)
 - `draw_list` → see what's drawn, with points
 - `draw_remove_one` → remove by ID
 - `draw_clear` → remove all
@@ -79,7 +90,8 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `ui_click` → click buttons by aria-label, text, or data-name
 - `layout_switch` → load a saved layout by name
 - `ui_fullscreen` → toggle fullscreen
-- `capture_screenshot` → take a screenshot (regions: "full", "chart", "strategy_tester")
+- `ui_find_element`, `ui_hover`, `ui_scroll`, `ui_mouse_click`, `ui_keyboard`, `ui_type_text` → lower-level UI automation, last resort
+- `capture_screenshot` → take a screenshot (regions: "full" (default), "chart", "strategy_tester"; `inline: true` also returns the image; `region_fallback: true` means the region was not found and the full window was captured)
 
 ### "TradingView isn't running"
 - `tv_launch` → auto-detect and launch TradingView with CDP on Mac/Win/Linux (returns `already_running` if CDP is up; pass `kill_existing: true` if TradingView is open without CDP). Other tools then use its port
@@ -109,7 +121,7 @@ These tools can return large payloads. Follow these rules to avoid context bloat
 | `data_get_pine_boxes` | ~1-2 KB per study (deduplicated zones) |
 | `data_get_ohlcv` (summary) | ~500 bytes |
 | `data_get_ohlcv` (100 bars) | ~8 KB |
-| `capture_screenshot` | ~300 bytes (returns file path, not image data) |
+| `capture_screenshot` | ~300 bytes (file path only; `inline: true` adds the ~300KB image) |
 
 ## Tool Conventions
 
@@ -117,7 +129,8 @@ These tools can return large payloads. Follow these rules to avoid context bloat
 - Entity IDs (from `chart_get_state`) are session-specific — don't cache across sessions
 - Pine indicators must be **visible** on chart for pine graphics tools to read their data
 - `chart_manage_indicator` requires **full indicator names**: "Relative Strength Index" not "RSI", "Moving Average Exponential" not "EMA", "Bollinger Bands" not "BB"
-- Screenshots save to `screenshots/` directory with timestamps
+- Screenshots save to `TV_MCP_SCREENSHOT_DIR` (default: `tradingview-mcp-screenshots` in the OS temp dir) with timestamps
+- The `skills/` workflows are also served as MCP prompts; their names match the directory names
 - OHLCV capped at 500 bars, trades at 20 per request
 - Pine labels capped at 50 per study by default (pass `max_labels` to override)
 
