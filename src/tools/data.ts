@@ -115,7 +115,7 @@ export function registerDataTools(server: McpServer) {
 
   defineTool(server, {
     name: 'data_get_study_values',
-    description: 'Get current indicator values from the data window for all visible studies (RSI, MACD, Bollinger Bands, EMAs, custom indicators with plot()).',
+    description: 'Get current indicator values from the data window for all visible studies (RSI, MACD, Bollinger Bands, EMAs, custom indicators with plot()). Use study_filter to target a specific indicator.',
     inputSchema: {
       study_filter: z.string().optional().describe('Case-insensitive substring of the study name. Omit for all. A miss lists the available studies.'),
     },

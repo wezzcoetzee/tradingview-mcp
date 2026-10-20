@@ -112,21 +112,25 @@ export function studyMissNotes(filter: string, available: string[]) {
 
 const MAX_LEVELS = 50;
 
+const isHorizontal = ({ raw }: GraphicsItem) => raw.y1 != null && raw.y1 === raw.y2;
+const isBlankRow = (row: string) => !row.replace(/[ |]/g, '');
+
 /**
  * Distinct horizontal price levels, newest lines first, capped; sloped lines are not levels.
- * With `currentOnly`, keeps just lines that reach the study's latest bar (max x2), dropping stale history.
+ * With `currentOnly`, keeps just horizontal lines ending at the latest horizontal x2; lines without x2 are never current.
  */
 export function horizontalLevels(items: GraphicsItem[], maxLevels = MAX_LEVELS, currentOnly = false): number[] {
-  const lastBar = currentOnly ? Math.max(...items.map(({ raw }) => raw.x2 ?? -Infinity)) : -Infinity;
+  const horizontal = items.filter(isHorizontal);
+  const lastBar = Math.max(...horizontal.map(({ raw }) => raw.x2 ?? -Infinity));
   const seen = new Set<number>();
-  for (let i = items.length - 1; i >= 0 && seen.size < maxLevels; i--) {
-    const { y1, y2, x2 } = items[i].raw;
-    if (y1 != null && y1 === y2 && (!currentOnly || x2 >= lastBar)) seen.add(y1);
+  for (let i = horizontal.length - 1; i >= 0 && seen.size < maxLevels; i--) {
+    const { y1, x2 } = horizontal[i].raw;
+    if (!currentOnly || (x2 != null && x2 >= lastBar)) seen.add(y1);
   }
   return [...seen].sort((a, b) => b - a);
 }
 
-/** Text rows per table with empty cells and blank rows kept, so row and column indices stay aligned. */
+/** Text rows per table with empty cells and inner blank rows kept so indices stay aligned; trailing blank rows are trimmed. */
 export function tableRows(items: GraphicsItem[]): { rows: string[] }[] {
   const tables = new Map<number, string[][]>();
   for (const { raw: v } of items) {
@@ -134,9 +138,11 @@ export function tableRows(items: GraphicsItem[]): { rows: string[] }[] {
     (rows[v.row] ??= [])[v.col] = v.t || '';
     tables.set(v.tid || 0, rows);
   }
-  return [...tables.values()].map(rows => ({
-    rows: Array.from(rows, row => Array.from(row ?? [], c => c ?? '').join(' | ')),
-  }));
+  return [...tables.values()].map(cells => {
+    const rows = Array.from(cells, row => Array.from(row ?? [], c => c ?? '').join(' | '));
+    while (rows.length && isBlankRow(rows[rows.length - 1])) rows.pop();
+    return { rows };
+  });
 }
 
 interface Bar { time: number; open: number; high: number; low: number; close: number; volume: number }

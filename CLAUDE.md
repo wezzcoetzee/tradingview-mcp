@@ -60,7 +60,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 6. `replay_stop` → return to realtime
 
 ### "Screen multiple symbols"
-- `batch_run` with `symbols: ["ES1!", "NQ1!", "YM1!"]` and `action: "screenshot"`, `"get_ohlcv"` (summary) or `"get_strategy_results"`; restores the original symbol/timeframe
+- `batch_run` with `symbols: ["ES1!", "NQ1!", "YM1!"]` and `action: "screenshot"`, `"get_ohlcv"` (summary) or `"get_strategy_results"`; restores the original symbol/timeframe, check `restored` (false adds `restore_seen`, what the chart showed)
 - `data_get_trades` returns the latest trades with `total`; pass `offset` to page from the oldest
 
 ### "Draw on the chart"

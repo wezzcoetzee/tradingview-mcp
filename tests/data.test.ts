@@ -78,7 +78,7 @@ describe('pine graphics readers', () => {
   it('tableRows keeps empty cells so columns stay aligned', () => {
     const cell = (row: number, col: number, t: string) => ({ id: `${row}${col}`, raw: { tid: 1, row, col, t } });
     const [table] = tableRows([cell(0, 0, 'A'), cell(0, 1, ''), cell(0, 2, 'C'), cell(1, 0, ''), cell(1, 1, ''), cell(1, 2, '')]);
-    assert.deepEqual(table.rows, ['A |  | C', ' |  | ']);
+    assert.deepEqual(table.rows, ['A |  | C']);
   });
 
   it('tableRows keeps a blank row between filled rows so indices stay aligned', () => {
@@ -104,6 +104,13 @@ describe('pine graphics readers', () => {
     const items = [line(1, 10), line(2, 100), line(3, 100)];
     assert.deepEqual(horizontalLevels(items, 50, true), [3, 2]);
     assert.deepEqual(horizontalLevels(items), [3, 2, 1]);
+  });
+
+  it('horizontalLevels currentOnly ignores forward-projected sloped lines and missing x2', () => {
+    const line = (y1: number, y2: number, x2?: number) => ({ id: y1 + y2, raw: { y1, y2, x2 } });
+    const items = [line(1, 1, 50), line(2, 2, 50), line(3, 9, 500), line(4, 4)];
+    assert.deepEqual(horizontalLevels(items, 50, true), [2, 1]);
+    assert.deepEqual(horizontalLevels([line(4, 4)], 50, true), []);
   });
 
   it('getPineLines reports current_levels as a subset of horizontal_levels', async () => {
@@ -174,6 +181,13 @@ describe('batchRun', () => {
     assert.equal(res.restored, false);
     assert.equal(res.restore_seen, 'AAPL D');
     assert.equal(res.results.length, 1);
+  });
+
+  it('reports restored: false when the original state could not be read', async () => {
+    const { deps } = baseDeps({ evaluate: async () => { throw new Error('boom'); }, getChartCollection: async () => 'COL' });
+    const res = await batchRun({ symbols: ['AAPL'], action: 'get_ohlcv', delay_ms: 0, _deps: deps });
+    assert.equal(res.restored, false);
+    assert.equal(res.restore_seen, 'original state unknown');
   });
 
   it('reports restored: true on a clean restore', async () => {

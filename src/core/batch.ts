@@ -104,9 +104,7 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
       }
     }
   } finally {
-    if (original) {
-      restore = await restoreChart(original);
-    }
+    restore = original ? await restoreChart(original) : { restored: false, restore_seen: 'original state unknown' };
   }
 
   const failed = results.filter(r => !r.success).length;
