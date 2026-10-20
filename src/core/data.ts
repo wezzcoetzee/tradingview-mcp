@@ -4,7 +4,7 @@
 import { evaluate as _evaluate, evaluateAsync, KNOWN_PATHS, safeString } from '../connection.js';
 
 const evaluate = _evaluate;
-import { debug } from '../debug.js';
+import { symbolMatches } from '../wait.js';
 
 const MAX_OHLCV_BARS = 500;
 const MAX_TRADES = 20;
@@ -42,7 +42,8 @@ export function buildGraphicsJS(collectionName, mapKey, filter) {
       var model = chart.model();
       var sources = model.model().dataSources();
       var results = [];
-      var filter = ${safeString(filter || '')};
+      var available = [];
+      var filter = ${safeString(filter || '')}.toLowerCase();
       for (var si = 0; si < sources.length; si++) {
         var s = sources[si];
         if (!s.metaInfo) continue;
@@ -50,7 +51,8 @@ export function buildGraphicsJS(collectionName, mapKey, filter) {
           var meta = s.metaInfo();
           var name = meta.description || meta.shortDescription || '';
           if (!name) continue;
-          if (filter && name.indexOf(filter) === -1) continue;
+          available.push(name);
+          if (filter && name.toLowerCase().indexOf(filter) === -1) continue;
           var g = s._graphics;
           if (!g || !g._primitivesCollection) continue;
           var pc = g._primitivesCollection;
@@ -81,60 +83,101 @@ export function buildGraphicsJS(collectionName, mapKey, filter) {
           if (items.length > 0) results.push({name: name, count: items.length, items: items});
         } catch(e) {}
       }
-      return results;
+      return {studies: results, available: available};
     })()
   `;
 }
 
-export async function getOhlcv({ count, summary }: any = {}) {
+interface GraphicsItem { id: string | number; raw: Record<string, any> }
+interface GraphicsStudy { name: string; count: number; items: GraphicsItem[] }
+
+type Evaluate = typeof evaluate;
+
+/**
+ * Read one graphics collection from every study matching `filter` (case-insensitive).
+ * A filter that matches nothing returns the available study names instead of a silent empty list.
+ */
+export async function readGraphics(collectionName: string, mapKey: string, filter = '', ev: Evaluate = evaluate) {
+  const raw: { studies: GraphicsStudy[]; available: string[] } | null = await ev(buildGraphicsJS(collectionName, mapKey, filter));
+  const studies = raw?.studies ?? [];
+  const available = raw?.available ?? [];
+  const missed = filter && !available.some(n => n.toLowerCase().includes(filter.toLowerCase()));
+  return { studies, notes: missed ? { warning: `No study name contains "${filter}"`, available_studies: available } : {} };
+}
+
+const MAX_LEVELS = 50;
+
+/** Distinct horizontal price levels, newest lines first, capped; sloped lines are not levels. */
+export function horizontalLevels(items: GraphicsItem[], maxLevels = MAX_LEVELS): number[] {
+  const seen = new Set<number>();
+  for (let i = items.length - 1; i >= 0 && seen.size < maxLevels; i--) {
+    const { y1, y2 } = items[i].raw;
+    if (y1 != null && y1 === y2) seen.add(y1);
+  }
+  return [...seen].sort((a, b) => b - a);
+}
+
+/** Text rows per table with empty cells kept, so columns stay aligned. */
+export function tableRows(items: GraphicsItem[]): { rows: string[] }[] {
+  const tables = new Map<number, string[][]>();
+  for (const { raw: v } of items) {
+    const rows = tables.get(v.tid || 0) ?? [];
+    (rows[v.row] ??= [])[v.col] = v.t || '';
+    tables.set(v.tid || 0, rows);
+  }
+  return [...tables.values()].map(rows => ({
+    rows: Array.from(rows, row => Array.from(row ?? [], c => c ?? '').join(' | ')).filter(r => r.replace(/[ |]/g, '')),
+  }));
+}
+
+interface Bar { time: number; open: number; high: number; low: number; close: number; volume: number }
+
+export function summarizeBars(bars: Bar[]) {
+  let high = -Infinity, low = Infinity, volSum = 0;
+  for (const b of bars) {
+    if (b.high > high) high = b.high;
+    if (b.low < low) low = b.low;
+    volSum += b.volume;
+  }
+  const first = bars[0];
+  const last = bars[bars.length - 1];
+  return {
+    success: true, bar_count: bars.length,
+    period: { from: first.time, to: last.time },
+    open: first.open, close: last.close,
+    high, low,
+    range: high - low,
+    change: last.close - first.open,
+    change_pct: first.open !== 0
+      ? Math.round(((last.close - first.open) / first.open) * 10000) / 100
+      : null,
+    avg_volume: Math.round(volSum / bars.length),
+    last_5_bars: bars.slice(-5),
+  };
+}
+
+export async function getOhlcv({ count, summary, _deps }: any = {}) {
+  const ev: Evaluate = _deps?.evaluate || evaluate;
   const limit = Math.min(Math.max(1, Math.floor(count ?? 100)), MAX_OHLCV_BARS);
-  let data;
-  try {
-    data = await evaluate(`
-      (function() {
-        var bars = ${BARS_PATH};
-        if (!bars || typeof bars.lastIndex !== 'function') return null;
-        var result = [];
-        var end = bars.lastIndex();
-        var start = Math.max(bars.firstIndex(), end - ${limit} + 1);
-        for (var i = start; i <= end; i++) {
-          var v = bars.valueAt(i);
-          if (v) result.push({time: v[0], open: v[1], high: v[2], low: v[3], close: v[4], volume: v[5] || 0});
-        }
-        return {bars: result, total_bars: bars.size(), source: 'direct_bars'};
-      })()
-    `);
-  } catch (err) { debug('data.getOhlcv', err); data = null; }
+  const data = await ev(`
+    (function() {
+      var bars = ${BARS_PATH};
+      if (!bars || typeof bars.lastIndex !== 'function') return null;
+      var result = [];
+      var end = bars.lastIndex();
+      var start = Math.max(bars.firstIndex(), end - ${limit} + 1);
+      for (var i = start; i <= end; i++) {
+        var v = bars.valueAt(i);
+        if (v) result.push({time: v[0], open: v[1], high: v[2], low: v[3], close: v[4], volume: v[5] || 0});
+      }
+      return {bars: result, total_bars: bars.size(), source: 'direct_bars'};
+    })()
+  `);
 
   if (!data || !data.bars || data.bars.length === 0) {
-    throw new Error('Could not extract OHLCV data. The chart may still be loading. Set DEBUG=tv-mcp for the underlying error.');
+    throw new Error('Could not extract OHLCV data. The chart may still be loading.');
   }
-
-  if (summary) {
-    const bars = data.bars;
-    let high = -Infinity, low = Infinity, volSum = 0;
-    for (const b of bars) {
-      if (b.high > high) high = b.high;
-      if (b.low < low) low = b.low;
-      volSum += b.volume;
-    }
-    const first = bars[0];
-    const last = bars[bars.length - 1];
-    return {
-      success: true, bar_count: bars.length,
-      period: { from: first.time, to: last.time },
-      open: first.open, close: last.close,
-      high, low,
-      range: high - low,
-      change: last.close - first.open,
-      change_pct: first.open !== 0
-        ? Math.round(((last.close - first.open) / first.open) * 10000) / 100
-        : null,
-      avg_volume: Math.round(volSum / bars.length),
-      last_5_bars: bars.slice(-5),
-    };
-  }
-
+  if (summary) return summarizeBars(data.bars);
   return { success: true, bar_count: data.bars.length, total_available: data.total_bars, source: data.source, bars: data.bars };
 }
 
@@ -201,8 +244,9 @@ export async function getIndicator({ entity_id, _deps }: any = {}) {
   return { success: true, entity_id, visible: data?.visible, inputs };
 }
 
-export async function getStrategyResults() {
-  const results = await evaluate(`
+export async function getStrategyResults({ _deps }: any = {}) {
+  const ev: Evaluate = _deps?.evaluate || evaluate;
+  const results = await ev(`
     (function() {
       ${FIND_STRATEGY_JS}
       try {
@@ -227,45 +271,58 @@ export async function getStrategyResults() {
       } catch(e) { return {metrics: {}, source: 'internal_api', error: e.message}; }
     })()
   `);
-  return { success: true, metric_count: Object.keys(results?.metrics || {}).length, source: results?.source, metrics: results?.metrics || {}, error: results?.error };
+  if (results?.error) return { success: false, error: results.error };
+  return { success: true, metric_count: Object.keys(results?.metrics || {}).length, source: results?.source, metrics: results?.metrics || {} };
 }
 
-export async function getTrades({ max_trades }: any = {}) {
-  const limit = Math.min(max_trades ?? 20, MAX_TRADES);
-  const trades = await evaluate(`
+export async function getTrades({ max_trades, offset, _deps }: any = {}) {
+  const ev: Evaluate = _deps?.evaluate || evaluate;
+  const limit = Math.max(1, Math.min(Math.floor(max_trades ?? MAX_TRADES), MAX_TRADES));
+  // Without an offset, return the latest trades; with one, page forward from the oldest.
+  const start = offset == null ? null : Math.max(0, Math.floor(offset));
+  const trades = await ev(`
     (function() {
       ${FIND_STRATEGY_JS}
       try {
         var chart = ${CHART_API}._chartWidget;
         var sources = chart.model().model().dataSources();
         var strat = findStrategy(sources);
-        if (!strat) return {trades: [], source: 'internal_api', error: 'No strategy found on chart.'};
+        if (!strat) return {error: 'No strategy found on chart.'};
         var orders = null;
         if (strat.ordersData) { orders = typeof strat.ordersData === 'function' ? strat.ordersData() : strat.ordersData; if (orders && typeof orders.value === 'function') orders = orders.value(); }
         if (!orders || !Array.isArray(orders)) {
           if (strat._orders) orders = strat._orders;
           else if (strat.tradesData) { orders = typeof strat.tradesData === 'function' ? strat.tradesData() : strat.tradesData; if (orders && typeof orders.value === 'function') orders = orders.value(); }
         }
-        if (!orders || !Array.isArray(orders)) return {trades: [], source: 'internal_api', error: 'ordersData() returned non-array.'};
+        if (!orders || !Array.isArray(orders)) return {error: 'ordersData() returned non-array.'};
+        var total = orders.length;
+        var from = ${start === null ? `Math.max(0, total - ${limit})` : start};
         var result = [];
-        for (var t = 0; t < Math.min(orders.length, ${limit}); t++) {
+        for (var t = from; t < Math.min(total, from + ${limit}); t++) {
           var o = orders[t];
           if (typeof o === 'object' && o !== null) {
             var trade = {};
             var okeys = Object.keys(o);
-            for (var k = 0; k < okeys.length; k++) { var v = o[okeys[k]]; if (v !== null && v !== undefined && typeof v !== 'function' && typeof v !== 'object') trade[okeys[k]] = v; }
+            for (var k = 0; k < okeys.length; k++) {
+              var v = o[okeys[k]];
+              if (v === null || v === undefined || typeof v === 'function') continue;
+              if (typeof v === 'object') { try { v = JSON.parse(JSON.stringify(v)); } catch(e2) { continue; } }
+              trade[okeys[k]] = v;
+            }
             result.push(trade);
           }
         }
-        return {trades: result, source: 'internal_api'};
-      } catch(e) { return {trades: [], source: 'internal_api', error: e.message}; }
+        return {trades: result, total: total, offset: from, source: 'internal_api'};
+      } catch(e) { return {error: e.message}; }
     })()
   `);
-  return { success: true, trade_count: trades?.trades?.length || 0, source: trades?.source, trades: trades?.trades || [], error: trades?.error };
+  if (!trades || trades.error) return { success: false, error: trades?.error ?? 'Could not read trades.' };
+  return { success: true, trade_count: trades.trades.length, total: trades.total, offset: trades.offset, source: trades.source, trades: trades.trades };
 }
 
-export async function getEquity() {
-  const equity = await evaluate(`
+export async function getEquity({ _deps }: any = {}) {
+  const ev: Evaluate = _deps?.evaluate || evaluate;
+  const equity = await ev(`
     (function() {
       ${FIND_STRATEGY_JS}
       try {
@@ -299,15 +356,17 @@ export async function getEquity() {
       } catch(e) { return {data: [], source: 'internal_api', error: e.message}; }
     })()
   `);
-  return { success: true, data_points: equity?.data?.length || 0, source: equity?.source, data: equity?.data || [], equity_summary: equity?.equity_summary, note: equity?.note, error: equity?.error };
+  if (equity?.error) return { success: false, error: equity.error };
+  return { success: true, data_points: equity?.data?.length || 0, source: equity?.source, data: equity?.data || [], equity_summary: equity?.equity_summary, note: equity?.note };
 }
 
-export async function getQuote({ symbol }: any = {}) {
-  const data = await evaluate(`
+export async function getQuote({ symbol, _deps }: any = {}) {
+  const ev: Evaluate = _deps?.evaluate || evaluate;
+  const data = await ev(`
     (function() {
       var api = ${CHART_API};
-      var sym = ${safeString(symbol || '')};
-      if (!sym) { try { sym = api.symbol(); } catch(e) {} }
+      var sym = '';
+      try { sym = api.symbol(); } catch(e) {}
       if (!sym) { try { sym = api.symbolExt().symbol; } catch(e) {} }
       var ext = {};
       try { ext = api.symbolExt() || {}; } catch(e) {}
@@ -348,6 +407,10 @@ export async function getQuote({ symbol }: any = {}) {
     })()
   `);
   if (!data || (data.last == null && data.close == null)) throw new Error('Could not retrieve quote. The chart may still be loading.');
+  // The quote is read from the active chart's bars, so another symbol would be mislabelled data.
+  if (symbol && !symbolMatches(data.symbol ?? '', symbol)) {
+    throw new Error(`Chart is on ${data.symbol}, not ${symbol}. quote_get only reads the active chart; call chart_set_symbol first.`);
+  }
   return { success: true, ...data };
 }
 
@@ -397,8 +460,9 @@ export async function getDepth() {
   return { success: true, bid_levels: data.bids?.length || 0, ask_levels: data.asks?.length || 0, spread: data.spread, bids: data.bids || [], asks: data.asks || [], raw_values: data.raw_values, note: data.note };
 }
 
-export async function getStudyValues() {
-  const data = await evaluate(`
+export async function getStudyValues({ _deps }: any = {}) {
+  const ev: Evaluate = _deps?.evaluate || evaluate;
+  const data = await ev(`
     (function() {
       var chart = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget;
       var model = chart.model();
@@ -419,12 +483,17 @@ export async function getStudyValues() {
               if (items) {
                 for (var i = 0; i < items.length; i++) {
                   var item = items[i];
-                  if (item._value && item._value !== '∅' && item._title) values[item._title] = item._value;
+                  if (!item._value || item._value === '∅' || !item._title) continue;
+                  var title = item._title, n = 2;
+                  while (title in values) title = item._title + ' (' + n++ + ')';
+                  values[title] = item._value;
                 }
               }
             }
           } catch(e) {}
-          if (Object.keys(values).length > 0) results.push({ name: name, values: values });
+          var entityId = null;
+          try { entityId = typeof s.id === 'function' ? s.id() : (s.id || null); } catch(e) {}
+          if (Object.keys(values).length > 0) results.push({ entity_id: entityId, name: name, values: values });
         } catch(e) {}
       }
       return results;
@@ -433,83 +502,41 @@ export async function getStudyValues() {
   return { success: true, study_count: data?.length || 0, studies: data || [] };
 }
 
-export async function getPineLines({ study_filter, verbose }: any = {}) {
-  const filter = study_filter || '';
-  const raw = await evaluate(buildGraphicsJS('dwglines', 'lines', filter));
-  if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
-
+export async function getPineLines({ study_filter, verbose, max_levels, _deps }: any = {}) {
+  const { studies: raw, notes } = await readGraphics('dwglines', 'lines', study_filter, _deps?.evaluate);
   const studies = raw.map(s => {
-    const hLevels = [];
-    const seen = {};
-    const allLines = [];
-    for (const item of s.items) {
-      const v = item.raw;
-      const y1 = v.y1 != null ? v.y1 : null;
-      const y2 = v.y2 != null ? v.y2 : null;
-      if (verbose) allLines.push({ id: item.id, y1, y2, x1: v.x1, x2: v.x2, horizontal: v.y1 === v.y2, style: v.st, width: v.w, color: v.ci });
-      if (y1 != null && v.y1 === v.y2 && !seen[y1]) { hLevels.push(y1); seen[y1] = true; }
-    }
-    hLevels.sort((a, b) => b - a);
-    const result: any = { name: s.name, total_lines: s.count, horizontal_levels: hLevels };
-    if (verbose) result.all_lines = allLines;
+    const horizontal_levels = horizontalLevels(s.items, max_levels ?? MAX_LEVELS);
+    const result: any = { name: s.name, total_lines: s.count, horizontal_levels };
+    if (verbose) result.all_lines = s.items.map(({ id, raw: v }) => ({ id, y1: v.y1 ?? null, y2: v.y2 ?? null, x1: v.x1, x2: v.x2, horizontal: v.y1 === v.y2, style: v.st, width: v.w, color: v.ci }));
     return result;
   });
-  return { success: true, study_count: studies.length, studies };
+  return { success: true, study_count: studies.length, studies, ...notes };
 }
 
-export async function getPineLabels({ study_filter, max_labels, verbose }: any = {}) {
-  const filter = study_filter || '';
-  const raw = await evaluate(buildGraphicsJS('dwglabels', 'labels', filter));
-  if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
-
-  const limit = max_labels ?? 50;
+export async function getPineLabels({ study_filter, max_labels, verbose, _deps }: any = {}) {
+  const { studies: raw, notes } = await readGraphics('dwglabels', 'labels', study_filter, _deps?.evaluate);
+  const limit = Math.max(0, max_labels ?? 50);
   const studies = raw.map(s => {
-    let labels = s.items.map(item => {
-      const v = item.raw;
+    const labels = s.items.map(({ id, raw: v }) => {
       const text = v.t || '';
       const price = v.y != null ? v.y : null;
-      if (verbose) return { id: item.id, text, price, x: v.x, yloc: v.yl, size: v.sz, textColor: v.tci, color: v.ci };
+      if (verbose) return { id, text, price, x: v.x, yloc: v.yl, size: v.sz, textColor: v.tci, color: v.ci };
       return { text, price };
     }).filter(l => l.text || l.price != null);
-    if (labels.length > limit) labels = labels.slice(-limit);
-    return { name: s.name, total_labels: s.count, showing: labels.length, labels };
+    const shown = labels.slice(Math.max(0, labels.length - limit));
+    return { name: s.name, total_labels: s.count, showing: shown.length, labels: shown };
   });
-  return { success: true, study_count: studies.length, studies };
+  return { success: true, study_count: studies.length, studies, ...notes };
 }
 
-export async function getPineTables({ study_filter }: any = {}) {
-  const filter = study_filter || '';
-  const raw = await evaluate(buildGraphicsJS('dwgtablecells', 'tableCells', filter));
-  if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
-
-  const studies = raw.map(s => {
-    const tables = {};
-    for (const item of s.items) {
-      const v = item.raw;
-      const tid = v.tid || 0;
-      if (!tables[tid]) tables[tid] = {};
-      if (!tables[tid][v.row]) tables[tid][v.row] = {};
-      tables[tid][v.row][v.col] = v.t || '';
-    }
-    const tableList = Object.entries(tables).map(([tid, rows]) => {
-      const rowNums = Object.keys(rows).map(Number).sort((a, b) => a - b);
-      const formatted = rowNums.map(rn => {
-        const cols = rows[rn];
-        const colNums = Object.keys(cols).map(Number).sort((a, b) => a - b);
-        return colNums.map(cn => cols[cn]).filter(Boolean).join(' | ');
-      }).filter(Boolean);
-      return { rows: formatted };
-    });
-    return { name: s.name, tables: tableList };
-  });
-  return { success: true, study_count: studies.length, studies };
+export async function getPineTables({ study_filter, _deps }: any = {}) {
+  const { studies: raw, notes } = await readGraphics('dwgtablecells', 'tableCells', study_filter, _deps?.evaluate);
+  const studies = raw.map(s => ({ name: s.name, tables: tableRows(s.items) }));
+  return { success: true, study_count: studies.length, studies, ...notes };
 }
 
-export async function getPineBoxes({ study_filter, verbose }: any = {}) {
-  const filter = study_filter || '';
-  const raw = await evaluate(buildGraphicsJS('dwgboxes', 'boxes', filter));
-  if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
-
+export async function getPineBoxes({ study_filter, verbose, _deps }: any = {}) {
+  const { studies: raw, notes } = await readGraphics('dwgboxes', 'boxes', study_filter, _deps?.evaluate);
   const studies = raw.map(s => {
     const zones = [];
     const seen = {};
@@ -526,5 +553,5 @@ export async function getPineBoxes({ study_filter, verbose }: any = {}) {
     if (verbose) result.all_boxes = allBoxes;
     return result;
   });
-  return { success: true, study_count: studies.length, studies };
+  return { success: true, study_count: studies.length, studies, ...notes };
 }
