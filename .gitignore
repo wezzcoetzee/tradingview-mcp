@@ -7,3 +7,5 @@ discovery-log.json
 
 .mcp.json
 .DS_Store
+.env*
+.claude/worktrees/
