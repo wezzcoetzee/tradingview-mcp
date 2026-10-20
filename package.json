@@ -16,6 +16,8 @@
     "tv": "bun src/cli/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test --path-ignore-patterns '**/e2e.test.ts'",
+    "pine:push": "bun scripts/pine_push.ts",
+    "pine:pull": "bun scripts/pine_pull.ts",
     "test:live": "bun test tests/e2e.test.ts"
   },
   "dependencies": {

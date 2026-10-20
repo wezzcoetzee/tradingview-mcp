@@ -14,15 +14,15 @@ set "TV_EXE="
 
 REM Check common install locations
 if exist "%LOCALAPPDATA%\TradingView\TradingView.exe" set "TV_EXE=%LOCALAPPDATA%\TradingView\TradingView.exe"
-if exist "%PROGRAMFILES%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES%\TradingView\TradingView.exe"
-if exist "%PROGRAMFILES(x86)%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES(x86)%\TradingView\TradingView.exe"
+if not defined TV_EXE if exist "%PROGRAMFILES%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES%\TradingView\TradingView.exe"
+if not defined TV_EXE if exist "%PROGRAMFILES(x86)%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES(x86)%\TradingView\TradingView.exe"
 
 REM Check MSIX / Windows Store installs
 if "%TV_EXE%"=="" (
-    for /f "tokens=*" %%i in ('dir /s /b "%PROGRAMFILES%\WindowsApps\TradingView*\TradingView.exe" 2^>nul') do set "TV_EXE=%%i"
+    for /f "tokens=*" %%i in ('dir /s /b "%PROGRAMFILES%\WindowsApps\TradingView*\TradingView.exe" 2^>nul') do if not defined TV_EXE set "TV_EXE=%%i"
 )
 if "%TV_EXE%"=="" (
-    for /f "tokens=*" %%i in ('where TradingView.exe 2^>nul') do set "TV_EXE=%%i"
+    for /f "tokens=*" %%i in ('where TradingView.exe 2^>nul') do if not defined TV_EXE set "TV_EXE=%%i"
 )
 
 if "%TV_EXE%"=="" (
@@ -41,10 +41,16 @@ start "" "%TV_EXE%" --remote-debugging-port=%PORT%
 echo Waiting for CDP to become available...
 timeout /t 5 /nobreak >nul
 
+set TRIES=0
 :check
 curl -s http://localhost:%PORT%/json/version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Still waiting...
+    set /a TRIES+=1
+    if %TRIES% geq 30 (
+        echo Error: CDP not responding after 30 attempts. TradingView may still be loading.
+        exit /b 1
+    )
+    echo Still waiting... ^(%TRIES%/30^)
     timeout /t 2 /nobreak >nul
     goto check
 )
