@@ -1,7 +1,7 @@
 /**
  * Core chart control logic.
  */
-import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, safeString, requireFinite } from '../connection.js';
+import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, safeString, requireFinite, requireText } from '../connection.js';
 import { waitFor, waitForChartReady as _waitForChartReady } from '../wait.js';
 import { parseJsonObject } from './json.js';
 
@@ -39,8 +39,9 @@ export async function getState({ _deps }: any = {}) {
   return { success: true, ...state };
 }
 
-export async function setSymbol({ symbol, _deps }: any = {}) {
+export async function setSymbol({ symbol: raw, _deps }: any = {}) {
   const { evaluate, waitForChartReady } = _resolve(_deps);
+  const symbol = requireText(raw, 'symbol');
   await evaluate(`${CHART_API}.setSymbol(${safeString(symbol)}, {})`);
   const { ok, value } = await waitForChartReady(symbol);
   if (!ok) {
@@ -49,8 +50,9 @@ export async function setSymbol({ symbol, _deps }: any = {}) {
   return { success: true, symbol, chart_ready: true };
 }
 
-export async function setTimeframe({ timeframe, _deps }: any = {}) {
+export async function setTimeframe({ timeframe: raw, _deps }: any = {}) {
   const { evaluate, waitForChartReady } = _resolve(_deps);
+  const timeframe = requireText(raw, 'timeframe');
   await evaluate(`${CHART_API}.setResolution(${safeString(timeframe)}, {})`);
   const { ok, value } = await waitForChartReady(null, timeframe);
   if (!ok) {
@@ -88,6 +90,7 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
   const inputs = inputsRaw ? parseJsonObject(inputsRaw, 'inputs') : undefined;
 
   if (action === 'add') {
+    requireText(indicator, 'indicator');
     const beforeIds: string[] = (await evaluate(STUDY_IDS)) || [];
     // createStudy returns a promise; await it in the page so rejections surface here.
     const created = await evaluateAsync(`
@@ -220,6 +223,7 @@ async function waitForVisibleRange(
 export async function setVisibleRange({ from, to, _deps }: any = {}) {
   const { evaluate, waitOpts } = _resolve(_deps);
   const requested: TimeRange = { from: requireFinite(from, 'from'), to: requireFinite(to, 'to') };
+  if (requested.from > requested.to) throw new Error(`from (${requested.from}) must not be after to (${requested.to})`);
   const zoom = await zoomToTimeRange(evaluate, requested.from, requested.to);
   if (!zoom.found) return notInLoadedRange(requested, zoom);
   const resolution = await evaluate(`${CHART_API}.resolution()`);

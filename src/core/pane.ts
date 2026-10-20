@@ -2,7 +2,7 @@
  * Core pane/layout management logic.
  * Controls multi-chart layouts (split panes) in TradingView.
  */
-import { evaluate as _evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
+import { evaluate as _evaluate, evaluateAsync, getClient, safeString, requireText } from '../connection.js';
 import { waitFor, symbolMatches } from '../wait.js';
 
 const CWC = 'window.TradingViewApi._chartWidgetCollection';
@@ -90,7 +90,7 @@ export async function list({ _deps }: any = {}) {
  * @param {string} layout - Layout code: s, 2h, 2v, 2-1, 1-2, 3h, 3v, 4, 6, 8, etc.
  */
 export async function setLayout({ layout }: any = {}) {
-  const code = layout.toLowerCase().replace(/\s+/g, '');
+  const code = requireText(layout, 'layout').toLowerCase().replace(/\s+/g, '');
 
   // Map friendly names to codes
   const aliases = {
@@ -159,8 +159,9 @@ export async function focus({ index, _deps }: any = {}) {
  * Set the symbol on a specific pane by index.
  * Works by focusing the pane, then using the active chart's setSymbol.
  */
-export async function setSymbol({ index, symbol, _deps }: any = {}) {
+export async function setSymbol({ index, symbol: raw, _deps }: any = {}) {
   const { evaluate, waitOpts } = _resolve(_deps);
+  const symbol = requireText(raw, 'symbol');
   const idx = Number(index);
   if (!Number.isInteger(idx) || idx < 0) {
     throw new Error(`Pane index must be a non-negative integer (got ${JSON.stringify(index)})`);

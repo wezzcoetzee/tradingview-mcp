@@ -113,6 +113,13 @@ export function requireFinite(value, name) {
   return n;
 }
 
+/** Trimmed non-empty string; an empty symbol or timeframe would otherwise be a silent no-op. */
+export function requireText(value: unknown, name: string): string {
+  const s = typeof value === 'string' ? value.trim() : '';
+  if (!s) throw new Error(`${name} is required (got ${JSON.stringify(value)})`);
+  return s;
+}
+
 class TimeoutError extends Error {}
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {

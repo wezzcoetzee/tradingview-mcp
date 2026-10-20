@@ -21,6 +21,13 @@ describe('setSymbol / setTimeframe', () => {
     assert.deepEqual([tf.success, tf.expected, tf.seen], [false, '5', '60']);
   });
 
+  it('reject an empty value before touching the chart, since waiting on "" would pass trivially', async () => {
+    const { _deps, calls } = deps();
+    await assert.rejects(setTimeframe({ timeframe: ' ', _deps }), /timeframe is required/);
+    await assert.rejects(setSymbol({ _deps }), /symbol is required/);
+    assert.equal(calls.length, 0);
+  });
+
   it('succeed when the chart is ready', async () => {
     const waitForChartReady = async () => ({ ok: true, value: undefined });
     const result = await setSymbol({ symbol: 'AAPL', _deps: deps(undefined, { waitForChartReady })._deps });
@@ -92,6 +99,10 @@ describe('time range navigation', () => {
     assert.equal(result.success, false);
     assert.equal(result.error, 'not_in_loaded_range');
     assert.deepEqual(result.loaded, { from: 1000, to: 2000 });
+  });
+
+  it('setVisibleRange rejects a reversed range instead of reporting it as unloaded', async () => {
+    await assert.rejects(setVisibleRange({ from: 6000, to: 5000, _deps: deps(() => outside)._deps }), /must not be after/);
   });
 
   // 60-minute bars: tolerance is max(10% of span, 3 bars = 10800s)

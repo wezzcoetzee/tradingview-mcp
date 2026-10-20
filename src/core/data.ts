@@ -1,7 +1,7 @@
 /**
  * Core data access logic.
  */
-import { evaluate as _evaluate, evaluateAsync, KNOWN_PATHS, safeString } from '../connection.js';
+import { evaluate as _evaluate, evaluateAsync, KNOWN_PATHS, safeString, requireFinite } from '../connection.js';
 
 const evaluate = _evaluate;
 import { symbolMatches } from '../wait.js';
@@ -158,7 +158,7 @@ export function summarizeBars(bars: Bar[]) {
 
 export async function getOhlcv({ count, summary, _deps }: any = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
-  const limit = Math.min(Math.max(1, Math.floor(count ?? 100)), MAX_OHLCV_BARS);
+  const limit = Math.min(Math.max(1, Math.floor(count == null ? 100 : requireFinite(count, 'count'))), MAX_OHLCV_BARS);
   const data = await ev(`
     (function() {
       var bars = ${BARS_PATH};
@@ -277,9 +277,9 @@ export async function getStrategyResults({ _deps }: any = {}) {
 
 export async function getTrades({ max_trades, offset, _deps }: any = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
-  const limit = Math.max(1, Math.min(Math.floor(max_trades ?? MAX_TRADES), MAX_TRADES));
+  const limit = Math.max(1, Math.min(Math.floor(max_trades == null ? MAX_TRADES : requireFinite(max_trades, 'max_trades')), MAX_TRADES));
   // Without an offset, return the latest trades; with one, page forward from the oldest.
-  const start = offset == null ? null : Math.max(0, Math.floor(offset));
+  const start = offset == null ? null : Math.max(0, Math.floor(requireFinite(offset, 'offset')));
   const trades = await ev(`
     (function() {
       ${FIND_STRATEGY_JS}
