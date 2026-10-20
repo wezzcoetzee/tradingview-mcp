@@ -106,6 +106,10 @@ export async function jump({ date, _deps }: { date?: string; _deps?: unknown } =
   const before = await evaluate(wv(`${rp}.currentDate()`));
   await evaluateAsync(`${rp}.selectDate(${ts}).then(function() { return 'ok'; })`);
   const { ok, value } = await waitFor(wv(`${rp}.currentDate()`), (d) => d !== before, { timeout: 5000, ...waitOpts });
+  // Jumping to the day the replay is already on leaves the date unchanged.
+  if (!ok && typeof before === 'number' && Math.floor(before / 86400) === Math.floor(ts / 86400000)) {
+    return { success: true, action: 'jump', date, previous_date: before, current_date: before, unchanged: true };
+  }
   if (!ok) {
     return { success: false, action: 'jump', error: 'Replay date did not change', date, previous_date: before, current_date: value ?? before };
   }

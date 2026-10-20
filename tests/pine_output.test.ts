@@ -31,16 +31,26 @@ describe('sliceSource', () => {
     assert.equal(r.total_lines, 4);
     assert.equal(sliceSource(script, { max_chars: 1000 }).truncated, false);
   });
+
+  it('to_line is the last whole line when the cut lands mid-line', () => {
+    // line 1 is 12 chars; 20 chars reaches into line 2
+    assert.equal(sliceSource(script, { max_chars: 20 }).to_line, 1);
+    // exactly lines 1-2 (12 + 1 + 14 = 27 chars)
+    const whole = sliceSource(script, { max_chars: 27 });
+    assert.equal(whole.to_line, 2);
+    assert.equal(whole.truncated, true);
+  });
 });
 
 describe('trimConsole', () => {
   const entry = (message: string, timestamp: string | null = '10:00:00') => ({ timestamp, type: 'info', message });
 
-  it('drops repeated entries and keeps the newest limit', () => {
-    const entries = [entry('a'), entry('a'), entry('b'), entry('c'), entry('a', '10:00:01')];
+  it('keeps repeated log lines and returns the newest limit', () => {
+    const entries = [entry('a'), entry('a'), entry('b'), entry('c'), entry('a')];
     const r = trimConsole(entries, 3);
-    assert.equal(r.total, 4);
+    assert.equal(r.total, 5);
     assert.deepEqual(r.entries.map(e => e.message), ['b', 'c', 'a']);
+    assert.equal(trimConsole(entries.slice(0, 2)).entries.length, 2);
   });
 
   it('defaults to 50 and limit 0 returns none', () => {

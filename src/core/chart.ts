@@ -61,7 +61,7 @@ export async function setTimeframe({ timeframe: raw, _deps }: any = {}) {
   return { success: true, timeframe, chart_ready: true };
 }
 
-/** TradingView chart style ids (the public SeriesStyle enum). 11 is not a style TradingView exposes. */
+/** TradingView chart style ids (the public SeriesStyle enum). Not listed: 11 (Range in newer builds), 16 and above. */
 export const CHART_TYPES: Record<string, number> = {
   Bars: 0, Candles: 1, Line: 2, Area: 3,
   Renko: 4, Kagi: 5, PointAndFigure: 6, LineBreak: 7,

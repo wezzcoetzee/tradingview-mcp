@@ -296,14 +296,15 @@ export function sliceSource(source: string, { from_line, to_line, max_chars }: {
   const from = Math.max(1, Math.floor(from_line ?? 1));
   const to = Math.min(lines.length, Math.floor(to_line ?? lines.length));
   if (from > to) throw new Error(`from_line (${from}) must not be after to_line (${to}); the script has ${lines.length} lines`);
-  let text = lines.slice(from - 1, to).join('\n');
-  let truncated = false;
-  if (max_chars !== undefined && text.length > max_chars) {
-    text = text.slice(0, Math.max(0, Math.floor(max_chars)));
-    truncated = true;
+  const full = lines.slice(from - 1, to).join('\n');
+  if (max_chars === undefined || full.length <= max_chars) {
+    return { source: full, from_line: from, to_line: to, truncated: false, total_lines: lines.length };
   }
-  const shownLines = text === '' ? 0 : text.split('\n').length;
-  return { source: text, from_line: from, to_line: truncated ? from + Math.max(shownLines, 1) - 1 : to, truncated, total_lines: lines.length };
+  const text = full.slice(0, Math.max(0, Math.floor(max_chars)));
+  // to_line is the last line shown whole; a cut through a line leaves a partial last line that is not counted.
+  const cutMidLine = full[text.length] !== '\n';
+  const shown = text === '' ? 0 : text.split('\n').length;
+  return { source: text, from_line: from, to_line: from + (cutMidLine ? shown - 1 : shown) - 1, truncated: true, total_lines: lines.length };
 }
 
 export async function getSource({ from_line, to_line, max_chars }: { from_line?: number; to_line?: number; max_chars?: number } = {}) {
@@ -538,14 +539,9 @@ export interface ConsoleEntry { timestamp: string | null; type: string; message:
 
 const DEFAULT_CONSOLE_LIMIT = 50;
 
-/** Drop repeated (timestamp, message) pairs, then keep the newest `limit`. */
+/** Keep the newest `limit` entries. Parent/child duplicates are removed in the page, so repeated log lines stay. */
 export function trimConsole(entries: readonly ConsoleEntry[], limit = DEFAULT_CONSOLE_LIMIT) {
-  const seen = new Set<string>();
-  const unique = entries.filter(e => {
-    const key = `${e.timestamp}|${e.message}`;
-    return !seen.has(key) && !!seen.add(key);
-  });
-  return { entries: limit > 0 ? unique.slice(-limit) : [], total: unique.length };
+  return { entries: limit > 0 ? entries.slice(-limit) : [], total: entries.length };
 }
 
 export async function getConsole({ limit }: { limit?: number } = {}) {
