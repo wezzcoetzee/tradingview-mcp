@@ -1,16 +1,74 @@
 import CDP from 'chrome-remote-interface';
 import { debug } from './debug.js';
 
-let client = null;
-let targetInfo = null;
-let pendingConnect = null;
-const CDP_HOST = 'localhost';
-const CDP_PORT = 9222;
-const MAX_RETRIES = 5;
+const CDP_HOST = '127.0.0.1';
+const DEFAULT_CDP_PORT = 9222;
+const MAX_ATTEMPTS = 3;
 const BASE_DELAY = 500;
 const CONNECT_TIMEOUT_MS = 5000;
-const EVAL_TIMEOUT_MS = 30000;
+const CALL_TIMEOUT_MS = 30000;
 const MAX_ERROR_DESC_LEN = 500;
+// Nothing is listening, or the host is unreachable: retrying only delays the error.
+const FATAL_ERROR_CODES = new Set(['ECONNREFUSED', 'ConnectionRefused', 'ENOTFOUND', 'EADDRNOTAVAIL', 'EHOSTUNREACH']);
+
+type CdpClient = Awaited<ReturnType<typeof CDP>>;
+// returnByValue results are JSON, so type them like JSON.parse output.
+type JsonValue = ReturnType<typeof JSON.parse>;
+
+export interface CdpTarget {
+  id: string;
+  type: string;
+  url: string;
+  title: string;
+}
+
+interface Connection {
+  client: CdpClient;
+  target: CdpTarget;
+  /** Send a CDP command with a deadline. Missing it drops the connection so the next call reconnects. */
+  call: (method: string, params?: object, ms?: number) => Promise<JsonValue>;
+}
+
+interface EvaluateResult {
+  result?: { value?: JsonValue };
+  exceptionDetails?: { text?: string; exception?: { description?: string } };
+}
+
+interface EvaluateOptions {
+  timeoutMs?: number;
+  awaitPromise?: boolean;
+  [param: string]: unknown;
+}
+
+let current: Connection | null = null;
+let pendingConnect: Promise<Connection> | null = null;
+let preferredTargetId: string | null = null;
+
+export function parseCdpPort(value: unknown): number {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid CDP port: ${value}`);
+  }
+  return port;
+}
+
+let cdpPort = process.env.TV_CDP_PORT ? parseCdpPort(process.env.TV_CDP_PORT) : DEFAULT_CDP_PORT;
+
+export function getCdpPort(): number {
+  return cdpPort;
+}
+
+/** Point every tool at another CDP port (tv_launch calls this). Drops any connection to the old one. */
+export function setCdpPort(port: number) {
+  const next = parseCdpPort(port);
+  if (next === cdpPort) return;
+  cdpPort = next;
+  void disconnect();
+}
+
+export function cdpBaseUrl(port = cdpPort): string {
+  return `http://${CDP_HOST}:${port}`;
+}
 
 // Known direct API paths discovered via live probing (see PROBE_RESULTS.md)
 const KNOWN_PATHS = {
@@ -55,112 +113,153 @@ export function requireFinite(value, name) {
   return n;
 }
 
-export async function getClient() {
-  if (client) {
-    try {
-      await client.Runtime.evaluate({ expression: '1', returnByValue: true });
-      return client;
-    } catch {
-      const stale = client;
-      client = null;
-      targetInfo = null;
-      try { await stale.close(); } catch {}
-    }
-  }
-  return connect();
-}
+class TimeoutError extends Error {}
 
-export async function connect() {
-  if (pendingConnect) return pendingConnect;
-  pendingConnect = (async () => {
-    let lastError;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        const target = await findChartTarget();
-        if (!target) {
-          throw new Error('No TradingView chart target found. Is TradingView open with a chart?');
-        }
-        const newClient = await withTimeout(
-          CDP({ host: CDP_HOST, port: CDP_PORT, target: target.id }),
-          CONNECT_TIMEOUT_MS,
-          'CDP connect',
-        );
-        targetInfo = target;
-
-        if (client && client !== newClient) {
-          try { await client.close(); } catch {}
-        }
-        client = newClient;
-
-        await client.Runtime.enable();
-        await client.Page.enable();
-        await client.DOM.enable();
-
-        return client;
-      } catch (err) {
-        lastError = err;
-        debug('connection', `attempt ${attempt + 1}/${MAX_RETRIES} failed: ${err.message}`);
-        const delay = Math.min(BASE_DELAY * Math.pow(2, attempt), 30000);
-        await new Promise(r => setTimeout(r, delay));
-      }
-    }
-    throw new Error(`CDP connection failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
-  })();
-  try {
-    return await pendingConnect;
-  } finally {
-    pendingConnect = null;
-  }
-}
-
-function withTimeout(promise, ms, label) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new TimeoutError(`${label} timed out after ${ms}ms`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-let preferredTargetId: string | null = null;
+const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** False for errors that mean nothing is listening on the CDP port, so retrying is pointless. */
+export function isTransientError(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } } | null;
+  return !FATAL_ERROR_CODES.has(e?.code ?? e?.cause?.code ?? '');
+}
+
+/** GET a CDP HTTP endpoint (/json/list, /json/version, ...) with a deadline. Throws on a non-2xx status. */
+export async function cdpFetch(path: string, { port = cdpPort, timeoutMs = CONNECT_TIMEOUT_MS } = {}): Promise<Response> {
+  const resp = await fetch(cdpBaseUrl(port) + path, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!resp.ok) throw new Error(`CDP ${path} returned HTTP ${resp.status}`);
+  return resp;
+}
+
+export async function listTargets(): Promise<CdpTarget[]> {
+  return (await cdpFetch('/json/list')).json();
+}
+
+export function pickChartTarget(targets: CdpTarget[], preferredId: string | null): CdpTarget | null {
+  const pages = targets.filter(t => t.type === 'page');
+  return pages.find(t => t.id === preferredId)
+    ?? pages.find(t => /tradingview\.com\/chart/i.test(t.url))
+    ?? pages.find(t => /tradingview/i.test(t.url))
+    ?? null;
+}
 
 export function setPreferredTargetId(id: string | null) {
   preferredTargetId = id;
 }
 
-async function findChartTarget() {
-  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`, {
-    signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS),
+async function findChartTarget(): Promise<CdpTarget | null> {
+  const targets = await listTargets();
+  // A closed tab's id never comes back, so stop preferring it.
+  if (preferredTargetId && !targets.some(t => t.id === preferredTargetId)) preferredTargetId = null;
+  return pickChartTarget(targets, preferredTargetId);
+}
+
+function drop(conn: Connection) {
+  if (current === conn) current = null;
+  conn.client.close().catch(() => {});
+}
+
+async function openConnection(): Promise<Connection> {
+  const target = await findChartTarget();
+  if (!target) {
+    throw new Error('No TradingView chart target found. Is TradingView open with a chart?');
+  }
+
+  const pending = CDP({ host: CDP_HOST, port: cdpPort, target: target.id });
+  let client: CdpClient;
+  try {
+    client = await withTimeout(pending, CONNECT_TIMEOUT_MS, 'CDP connect');
+  } catch (err) {
+    // The socket can still open after we gave up on it; close it instead of leaking it.
+    pending.then(late => late.close()).catch(() => {});
+    throw err;
+  }
+
+  const send = client.send.bind(client);
+  const conn: Connection = {
+    client,
+    target,
+    call: (method, params = {}, ms = CALL_TIMEOUT_MS) =>
+      withTimeout(send(method, params), ms, method).catch((err: unknown) => {
+        if (err instanceof TimeoutError) drop(conn);
+        throw err;
+      }),
+  };
+  // Domain helpers (client.Input.dispatchKeyEvent, ...) all go through send(), so this gives them deadlines too.
+  client.send = (method: string, params?: object, sessionId?: string, callback?: () => void) =>
+    callback ? send(method, params, sessionId, callback) : conn.call(method, params);
+  client.on('disconnect', () => {
+    if (current === conn) current = null;
   });
-  const targets = await resp.json();
-  if (preferredTargetId) {
-    const preferred = targets.find(t => t.id === preferredTargetId);
-    if (preferred) return preferred;
+
+  try {
+    await Promise.all([client.Runtime.enable(), client.Page.enable(), client.DOM.enable()]);
+  } catch (err) {
+    drop(conn);
+    throw err;
   }
-  return targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
-    || targets.find(t => t.type === 'page' && /tradingview/i.test(t.url))
-    || null;
+  return conn;
 }
 
-export async function getTargetInfo() {
-  if (!targetInfo) {
-    await getClient();
+async function establish(): Promise<Connection> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const conn = await openConnection();
+      if (current) drop(current);
+      current = conn;
+      return conn;
+    } catch (err) {
+      const msg = errorMessage(err);
+      if (!isTransientError(err)) {
+        throw new Error(`Cannot reach TradingView at ${cdpBaseUrl()} (${msg}). Start it with tv_launch, or launch it with --remote-debugging-port=${cdpPort}.`);
+      }
+      if (attempt >= MAX_ATTEMPTS) {
+        throw new Error(`CDP connection failed after ${attempt} attempts: ${msg}`);
+      }
+      debug('connection', `attempt ${attempt}/${MAX_ATTEMPTS} failed: ${msg}`);
+      await new Promise(r => setTimeout(r, BASE_DELAY * 2 ** (attempt - 1)));
+    }
   }
-  return targetInfo;
 }
 
-export async function evaluate(expression, opts: any = {}) {
-  const c = await getClient();
-  const timeoutMs = opts.timeoutMs ?? EVAL_TIMEOUT_MS;
-  const { timeoutMs: _ignored, ...cdpOpts } = opts;
-  const result = await withTimeout(
-    c.Runtime.evaluate({
-      expression,
-      returnByValue: true,
-      awaitPromise: cdpOpts.awaitPromise ?? false,
-      ...cdpOpts,
-    }),
-    timeoutMs,
+function reconnect(): Promise<Connection> {
+  pendingConnect ??= establish().finally(() => { pendingConnect = null; });
+  return pendingConnect;
+}
+
+function getConnection(): Promise<Connection> {
+  return current ? Promise.resolve(current) : reconnect();
+}
+
+export async function getClient() {
+  return (await getConnection()).client;
+}
+
+export async function connect() {
+  return (await reconnect()).client;
+}
+
+export async function getTargetInfo(): Promise<CdpTarget> {
+  return (await getConnection()).target;
+}
+
+/**
+ * A timeout drops the connection rather than sending Runtime.terminateExecution: if our
+ * script is only awaiting a promise, that would terminate TradingView's next script instead.
+ */
+export async function evaluate(expression: string, { timeoutMs = CALL_TIMEOUT_MS, ...params }: EvaluateOptions = {}) {
+  const conn = await getConnection();
+  const result: EvaluateResult = await conn.call(
     'Runtime.evaluate',
+    { expression, returnByValue: true, awaitPromise: false, ...params },
+    timeoutMs,
   );
   if (result.exceptionDetails) {
     const raw = result.exceptionDetails.exception?.description
@@ -173,16 +272,12 @@ export async function evaluate(expression, opts: any = {}) {
   return result.result?.value;
 }
 
-export async function evaluateAsync(expression) {
+export async function evaluateAsync(expression: string) {
   return evaluate(expression, { awaitPromise: true });
 }
 
 export async function disconnect() {
-  if (client) {
-    try { await client.close(); } catch {}
-    client = null;
-    targetInfo = null;
-  }
+  if (current) drop(current);
 }
 
 // --- Direct API path helpers ---

@@ -81,7 +81,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `capture_screenshot` → take a screenshot (regions: "full", "chart", "strategy_tester")
 
 ### "TradingView isn't running"
-- `tv_launch` → auto-detect and launch TradingView with CDP on Mac/Win/Linux
+- `tv_launch` → auto-detect and launch TradingView with CDP on Mac/Win/Linux (returns `already_running` if CDP is up; pass `kill_existing: true` if TradingView is open without CDP). Other tools then use its port
 - `tv_health_check` → verify connection is working
 
 ## Context Management Rules
@@ -123,7 +123,7 @@ These tools can return large payloads. Follow these rules to avoid context bloat
 ## Architecture
 
 ```
-Claude Code ←→ MCP Server (stdio) ←→ CDP (localhost:9222) ←→ TradingView Desktop (Electron)
+Claude Code ←→ MCP Server (stdio) ←→ CDP (127.0.0.1:9222, override with TV_CDP_PORT) ←→ TradingView Desktop (Electron)
 ```
 
 Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines').get(false)._primitivesDataById`

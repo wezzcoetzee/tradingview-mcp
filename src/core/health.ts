@@ -1,9 +1,9 @@
 /**
  * Core health/discovery/launch logic.
  */
-import { getClient, getTargetInfo, evaluate } from '../connection.js';
+import { getClient, getTargetInfo, evaluate, cdpFetch, cdpBaseUrl, getCdpPort, parseCdpPort, setCdpPort } from '../connection.js';
 import { existsSync } from 'fs';
-import { execSync, spawn } from 'child_process';
+import { execFileSync, execSync, spawn } from 'child_process';
 
 export async function healthCheck() {
   await getClient();
@@ -159,10 +159,39 @@ export async function uiState() {
   return { success: true, ...state };
 }
 
-export async function launch({ port, kill_existing }: any = {}) {
-  const cdpPort = port || 9222;
+interface LaunchOptions {
+  port?: number;
+  kill_existing?: boolean;
+}
+
+interface CdpVersion {
+  Browser: string;
+  'User-Agent': string;
+}
+
+async function probeCdp(port: number): Promise<CdpVersion | null> {
+  try {
+    return await (await cdpFetch('/json/version', { port, timeoutMs: 1000 })).json();
+  } catch {
+    return null;
+  }
+}
+
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export async function launch({ port, kill_existing }: LaunchOptions = {}) {
+  const cdpPort = port === undefined ? getCdpPort() : parseCdpPort(port);
   const killFirst = kill_existing === true;
   const platform = process.platform;
+  const cdpInfo = (info: CdpVersion) => ({
+    cdp_port: cdpPort, cdp_url: cdpBaseUrl(cdpPort), browser: info.Browser, user_agent: info['User-Agent'],
+  });
+
+  const running = await probeCdp(cdpPort);
+  if (running) {
+    setCdpPort(cdpPort);
+    return { success: true, already_running: true, platform, ...cdpInfo(running) };
+  }
 
   const pathMap = {
     darwin: [
@@ -216,7 +245,8 @@ export async function launch({ port, kill_existing }: any = {}) {
       if (platform === 'win32') {
         execSync('taskkill /F /IM TradingView.exe', { timeout: 5000 });
       } else {
-        const pids = execSync(`pgrep -fx ${JSON.stringify(tvPath)}`, { timeout: 5000 })
+        // Match the binary with or without flags; -fx only matched a bare launch.
+        const pids = execFileSync('pgrep', ['-f', `^${escapeRegex(tvPath)}( |$)`], { timeout: 5000 })
           .toString().trim().split('\n').filter(Boolean);
         for (const pid of pids) {
           try { process.kill(Number(pid), 'SIGTERM'); } catch {}
@@ -227,32 +257,26 @@ export async function launch({ port, kill_existing }: any = {}) {
   }
 
   const child = spawn(tvPath, [`--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore' });
+  // Without a listener, a spawn failure (EACCES, missing binary) is an uncaught 'error' that kills the server.
+  let spawnError: Error | null = null;
+  child.once('error', (err) => { spawnError = err; });
   child.unref();
 
   for (let i = 0; i < 15; i++) {
     await new Promise(r => setTimeout(r, 1000));
-    try {
-      const http = await import('http');
-      const ready = await new Promise((resolve) => {
-        http.get(`http://localhost:${cdpPort}/json/version`, (res) => {
-          let data = '';
-          res.on('data', (chunk) => data += chunk);
-          res.on('end', () => resolve(data));
-        }).on('error', () => resolve(null));
-      });
-      if (ready) {
-        const info = JSON.parse(ready as string);
-        return {
-          success: true, platform, binary: tvPath, pid: child.pid,
-          cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,
-          browser: info.Browser, user_agent: info['User-Agent'],
-        };
-      }
-    } catch { /* retry */ }
+    if (spawnError) throw new Error(`Failed to start TradingView (${tvPath}): ${spawnError.message}`);
+    const info = await probeCdp(cdpPort);
+    if (info) {
+      setCdpPort(cdpPort);
+      return { success: true, platform, binary: tvPath, pid: child.pid, ...cdpInfo(info) };
+    }
   }
 
-  return {
-    success: true, platform, binary: tvPath, pid: child.pid, cdp_port: cdpPort, cdp_ready: false,
-    warning: 'TradingView launched but CDP not responding yet. It may still be loading. Try tv_health_check in a few seconds.',
-  };
+  // Electron's single-instance lock hands the launch to an instance that is already running without CDP.
+  throw new Error(
+    `TradingView started but CDP did not come up on port ${cdpPort} within 15s. `
+    + (killFirst
+      ? 'It may still be loading; try tv_health_check shortly.'
+      : 'If TradingView was already running without CDP, pass kill_existing: true to restart it with CDP.'),
+  );
 }

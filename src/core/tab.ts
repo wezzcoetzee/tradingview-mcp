@@ -2,17 +2,16 @@
  * Core tab management logic.
  * Controls TradingView Desktop tabs via CDP and Electron keyboard shortcuts.
  */
-import { getClient, evaluate, disconnect, setPreferredTargetId } from '../connection.js';
+import { getClient, disconnect, setPreferredTargetId, listTargets, cdpFetch } from '../connection.js';
 
-const CDP_HOST = 'localhost';
-const CDP_PORT = 9222;
+const TAB_CHANGE_TIMEOUT_MS = 5000;
+const POLL_INTERVAL_MS = 250;
 
 /**
  * List all open chart tabs (CDP page targets).
  */
 export async function list() {
-  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
-  const targets = await resp.json();
+  const targets = await listTargets();
 
   const tabs = targets
     .filter(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
@@ -27,31 +26,39 @@ export async function list() {
   return { success: true, tab_count: tabs.length, tabs };
 }
 
+type TabList = Awaited<ReturnType<typeof list>>;
+
+/** Poll the tab list until `done` holds, returning the last list either way. */
+async function waitForTabs(done: (tabs: TabList) => boolean): Promise<TabList> {
+  const deadline = Date.now() + TAB_CHANGE_TIMEOUT_MS;
+  let tabs = await list();
+  while (!done(tabs) && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+    tabs = await list();
+  }
+  return tabs;
+}
+
+/** Press Cmd+<key> on macOS, Ctrl+<key> elsewhere. */
+async function pressShortcut(key: string, code: string, windowsVirtualKeyCode: number) {
+  const c = await getClient();
+  const modifiers = process.platform === 'darwin' ? 4 : 2; // 4 = meta (Cmd), 2 = ctrl
+  await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers, key, code, windowsVirtualKeyCode });
+  await c.Input.dispatchKeyEvent({ type: 'keyUp', key, code });
+}
+
 /**
  * Open a new chart tab via keyboard shortcut (Ctrl+T / Cmd+T).
  */
 export async function newTab() {
-  const c = await getClient();
+  const before = await list();
+  await pressShortcut('t', 'KeyT', 84);
 
-  // Electron/TradingView Desktop uses Ctrl+T for new tab on macOS too
-  // But some versions use Cmd+T
-  const isMac = process.platform === 'darwin';
-  const mod = isMac ? 4 : 2; // 4 = meta (Cmd), 2 = ctrl
-
-  await c.Input.dispatchKeyEvent({
-    type: 'keyDown',
-    modifiers: mod,
-    key: 't',
-    code: 'KeyT',
-    windowsVirtualKeyCode: 84,
-  });
-  await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 't', code: 'KeyT' });
-
-  await new Promise(r => setTimeout(r, 2000));
-
-  // Verify a new tab appeared
-  const state = await list();
-  return { success: true, action: 'new_tab_opened', ...state };
+  const after = await waitForTabs(t => t.tab_count > before.tab_count);
+  if (after.tab_count <= before.tab_count) {
+    throw new Error(`New tab did not open (tab count stayed at ${before.tab_count})`);
+  }
+  return { ...after, action: 'new_tab_opened', tabs_before: before.tab_count };
 }
 
 /**
@@ -63,33 +70,23 @@ export async function closeTab() {
     throw new Error('Cannot close the last tab. Use tv_launch to restart TradingView instead.');
   }
 
-  const c = await getClient();
-  const isMac = process.platform === 'darwin';
-  const mod = isMac ? 4 : 2;
-
-  await c.Input.dispatchKeyEvent({
-    type: 'keyDown',
-    modifiers: mod,
-    key: 'w',
-    code: 'KeyW',
-    windowsVirtualKeyCode: 87,
-  });
-  await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'w', code: 'KeyW' });
-
-  await new Promise(r => setTimeout(r, 1000));
+  await pressShortcut('w', 'KeyW', 87);
 
   // The cached CDP client points at the now-closed target. Drop it so the
   // next call reconnects to a live tab instead of erroring on a stale handle.
   await disconnect();
 
-  const after = await list();
+  const after = await waitForTabs(t => t.tab_count < before.tab_count);
+  if (after.tab_count >= before.tab_count) {
+    throw new Error(`Tab did not close (tab count stayed at ${before.tab_count})`);
+  }
   return { success: true, action: 'tab_closed', tabs_before: before.tab_count, tabs_after: after.tab_count };
 }
 
 /**
  * Switch to a tab by index. Reconnects CDP to the new target.
  */
-export async function switchTab({ index }: any = {}) {
+export async function switchTab({ index }: { index?: unknown } = {}) {
   const idx = Number(index);
   if (!Number.isInteger(idx) || idx < 0) {
     throw new Error(`Tab index must be a non-negative integer (got ${JSON.stringify(index)})`);
@@ -101,15 +98,12 @@ export async function switchTab({ index }: any = {}) {
   }
 
   const target = tabs.tabs[idx];
-
-  // Use CDP Target.activateTarget to bring the tab to front
   try {
-    const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${target.id}`);
-    await resp.text();
-    setPreferredTargetId(target.id);
-    await disconnect();
-    return { success: true, action: 'switched', index: idx, tab_id: target.id, chart_id: target.chart_id };
+    await cdpFetch(`/json/activate/${target.id}`);
   } catch (e) {
-    throw new Error(`Failed to activate tab ${idx}: ${e.message}`);
+    throw new Error(`Failed to activate tab ${idx}: ${e instanceof Error ? e.message : String(e)}`);
   }
+  setPreferredTargetId(target.id);
+  await disconnect();
+  return { success: true, action: 'switched', index: idx, tab_id: target.id, chart_id: target.chart_id };
 }

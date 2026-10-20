@@ -28,10 +28,10 @@ export function registerHealthTools(server: McpServer) {
 
   defineTool(server, {
     name: 'tv_launch',
-    description: 'Launch TradingView Desktop with Chrome DevTools Protocol (remote debugging) enabled. Auto-detects install location on Mac, Windows, and Linux.',
+    description: 'Launch TradingView Desktop with Chrome DevTools Protocol (remote debugging) enabled. Auto-detects install location on Mac, Windows, and Linux. Returns already_running if CDP is already up on the port. All other tools then use the chosen port.',
     inputSchema: {
-      port: z.coerce.number().optional().describe('CDP port (default 9222)'),
-      kill_existing: zBool.optional().describe('Kill existing TradingView instances first (default true)'),
+      port: z.coerce.number().int().min(1).max(65535).optional().describe('CDP port (default TV_CDP_PORT env var, else 9222)'),
+      kill_existing: zBool.optional().describe('Kill existing TradingView instances first, needed when TradingView is running without CDP (default false)'),
     },
     annotations: DESTRUCTIVE,
     run: ({ port, kill_existing }) => core.launch({ port, kill_existing }),
