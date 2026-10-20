@@ -13,7 +13,7 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_set_source',
-    description: 'Set Pine Script source code in the editor',
+    description: 'Set Pine Script source code in the editor. Replaces the open script\'s contents; the response includes script_name, the script a following pine_save would overwrite.',
     inputSchema: {
       source: z.string().describe('Pine Script source code to inject'),
     },
@@ -37,7 +37,7 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_save',
-    description: 'Save the current Pine Script (Ctrl+S)',
+    description: 'Save the current Pine Script (Cmd+S on macOS, Ctrl+S elsewhere). Overwrites the saved script named in script_name. Returns success: false if the save cannot be confirmed.',
     annotations: WRITE,
     run: () => core.save(),
   });
@@ -58,22 +58,24 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_new',
-    description: 'Create a new blank Pine Script',
+    description: 'Replace the editor contents with a new blank Pine Script template. Does not open a new tab: if the editor holds a saved script, a following pine_save would overwrite it, so this refuses unless replace_current is true.',
     inputSchema: {
       type: z.enum(['indicator', 'strategy', 'library']).describe('Type of script to create'),
+      replace_current: z.boolean().optional().describe('Set true to replace the editor contents even though a saved script is open (a later pine_save would overwrite it)'),
     },
     annotations: DESTRUCTIVE,
-    run: ({ type }) => core.newScript({ type }),
+    run: ({ type, replace_current }) => core.newScript({ type, replace_current }),
   });
 
   defineTool(server, {
     name: 'pine_open',
-    description: 'Open a saved Pine Script by name',
+    description: 'Load a saved Pine Script by name into the editor by replacing its contents (the editor still holds the previously open script, so a pine_save would overwrite that one). Refuses when a saved script is open unless replace_current is true.',
     inputSchema: {
       name: z.string().describe('Name of the saved script to open (case-insensitive match)'),
+      replace_current: z.boolean().optional().describe('Set true to replace the editor contents even though a saved script is open (a later pine_save would overwrite it)'),
     },
     annotations: DESTRUCTIVE,
-    run: ({ name }) => core.openScript({ name }),
+    run: ({ name, replace_current }) => core.openScript({ name, replace_current }),
     onError: (error) => ({ success: false, source: 'internal_api', error }),
   });
 
