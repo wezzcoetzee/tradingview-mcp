@@ -22,6 +22,13 @@ function _resolve(deps) {
   return { evaluate, waitOpts: { evaluate, ...deps?.waitOpts } };
 }
 
+const LAYOUT_ALIASES = {
+  'single': 's', '1': 's', '1x1': 's',
+  '2x1': '2h', '1x2': '2v',
+  '2x2': '4', 'grid': '4', 'quad': '4',
+  '3x1': '3h', '1x3': '3v',
+};
+
 const LAYOUT_NAMES = {
   's': '1 chart',
   '2h': '2 horizontal',
@@ -42,6 +49,9 @@ const LAYOUT_NAMES = {
   '14': '14 charts',
   '16': '16 charts',
 };
+
+/** Every layout code or friendly alias setLayout accepts. */
+export const LAYOUT_INPUTS = [...Object.keys(LAYOUT_NAMES), ...Object.keys(LAYOUT_ALIASES)] as [string, ...string[]];
 
 /**
  * List all panes in the current layout with their symbols and index.
@@ -92,14 +102,7 @@ export async function list({ _deps }: any = {}) {
 export async function setLayout({ layout }: any = {}) {
   const code = requireText(layout, 'layout').toLowerCase().replace(/\s+/g, '');
 
-  // Map friendly names to codes
-  const aliases = {
-    'single': 's', '1': 's', '1x1': 's',
-    '2x1': '2h', '1x2': '2v',
-    '2x2': '4', 'grid': '4', 'quad': '4',
-    '3x1': '3h', '1x3': '3v',
-  };
-  const resolved = aliases[code] || code;
+  const resolved = LAYOUT_ALIASES[code] || code;
 
   if (!LAYOUT_NAMES[resolved]) {
     const available = Object.entries(LAYOUT_NAMES).map(([k, v]) => `  ${k} — ${v}`).join('\n');

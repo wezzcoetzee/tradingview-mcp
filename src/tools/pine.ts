@@ -28,14 +28,14 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_compile',
-    description: 'Compile / add the current Pine Script to the chart. compile_confirmed is false when no marker or chart change was seen within 6s.',
+    description: 'Raw click of the editor\'s compile / add-to-chart button, with no error report. Prefer pine_smart_compile, which also returns errors and study changes. compile_confirmed is false when no marker or chart change was seen within 6 seconds.',
     annotations: WRITE,
     run: () => core.compile(),
   });
 
   defineTool(server, {
     name: 'pine_get_errors',
-    description: 'Get Pine Script compilation markers from Monaco. errors are severity 8 only and set has_errors; warnings (severity < 8) are listed separately and do not fail the build.',
+    description: 'Read the editor\'s current compilation markers (use after pine_compile; pine_smart_compile already returns them). errors are severity 8 only and set has_errors; warnings (severity < 8) are listed separately and do not fail the build.',
     annotations: READ_ONLY,
     run: () => core.getErrors(),
   });
@@ -59,7 +59,7 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_smart_compile',
-    description: 'Intelligent compile: detects button, compiles, waits for markers or chart studies to change, reports errors, warnings and study changes. compile_confirmed is false (with a note) when the result may belong to the previous compile.',
+    description: 'Default way to compile the script in the editor and add it to the chart: finds the right button, compiles, waits for markers or chart studies to change, and reports errors, warnings and study changes. compile_confirmed is false (with a note) when the result may belong to the previous compile.',
     annotations: WRITE,
     run: () => core.smartCompile(),
   });
@@ -96,7 +96,7 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_analyze',
-    description: 'Run static analysis on Pine Script code WITHOUT compiling — catches array out-of-bounds, unguarded array.first()/last(), bad loop bounds, and implicit bool casts. Works offline, no TradingView connection needed.',
+    description: 'Offline static analysis of the given source, ignoring the editor and needing no TradingView connection. Catches array out-of-bounds, unguarded array.first()/last(), bad loop bounds and implicit bool casts. It does not compile, so run pine_check or pine_smart_compile for compile errors.',
     inputSchema: {
       source: z.string().describe('Pine Script source code to analyze'),
     },
@@ -106,7 +106,7 @@ export function registerPineTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pine_check',
-    description: 'Compile Pine Script via TradingView\'s server API without needing the chart open. Returns compilation errors/warnings. Useful for validating code before injecting into the chart.',
+    description: 'Compile the given source through TradingView\'s server API (a network call) and return errors and warnings. Ignores the editor and the chart, so use it to validate code before pine_set_source.',
     inputSchema: {
       source: z.string().describe('Pine Script source code to compile/validate'),
     },

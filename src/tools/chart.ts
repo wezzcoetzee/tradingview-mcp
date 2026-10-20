@@ -35,7 +35,7 @@ export function registerChartTools(server: McpServer) {
     name: 'chart_set_type',
     description: 'Change chart type',
     inputSchema: {
-      chart_type: z.string().describe('Chart type: Bars(0), Candles(1), Line(2), Area(3), Renko(4), Kagi(5), PointAndFigure(6), LineBreak(7), HeikinAshi(8), HollowCandles(9), Baseline(10), HiLo(12), Columns(13), LineWithMarkers(14), StepLine(15) — pass name or number'),
+      chart_type: z.enum(core.CHART_TYPE_NAMES).describe('Chart style name'),
     },
     annotations: IDEMPOTENT_WRITE,
     run: ({ chart_type }) => core.setType({ chart_type }),
@@ -56,17 +56,17 @@ export function registerChartTools(server: McpServer) {
 
   defineTool(server, {
     name: 'chart_get_visible_range',
-    description: 'Get the visible date range (unix timestamps) and bars range on the chart',
+    description: 'Get the visible date range (unix timestamps in seconds) and bars range on the chart',
     annotations: READ_ONLY,
     run: () => core.getVisibleRange(),
   });
 
   defineTool(server, {
     name: 'chart_set_visible_range',
-    description: 'Zoom the chart to a specific date range (unix timestamps). Returns partially_loaded: true with the loaded from/to when only part of the range has loaded bars',
+    description: 'Zoom the chart to a specific date range (unix timestamps in seconds). Returns partially_loaded: true with the loaded from/to when only part of the range has loaded bars',
     inputSchema: {
-      from: z.coerce.number().describe('Start of range (unix timestamp in seconds)'),
-      to: z.coerce.number().describe('End of range (unix timestamp in seconds)'),
+      from: z.coerce.number().describe('Start of range, unix seconds'),
+      to: z.coerce.number().describe('End of range, unix seconds'),
     },
     annotations: IDEMPOTENT_WRITE,
     run: ({ from, to }) => core.setVisibleRange({ from, to }),
@@ -76,7 +76,7 @@ export function registerChartTools(server: McpServer) {
     name: 'chart_scroll_to_date',
     description: 'Jump the chart view to center on a specific date',
     inputSchema: {
-      date: z.string().describe('ISO date string (e.g., "2024-01-15") or unix timestamp as a string'),
+      date: z.string().describe('ISO date string (e.g., "2024-01-15") or unix timestamp in seconds as a string'),
     },
     annotations: IDEMPOTENT_WRITE,
     run: ({ date }) => core.scrollToDate({ date }),

@@ -68,6 +68,7 @@ export const CHART_TYPES: Record<string, number> = {
   HeikinAshi: 8, HollowCandles: 9,
   Baseline: 10, HiLo: 12, Columns: 13, LineWithMarkers: 14, StepLine: 15,
 };
+export const CHART_TYPE_NAMES = Object.keys(CHART_TYPES) as [string, ...string[]];
 const VALID_CHART_STYLES = new Set(Object.values(CHART_TYPES));
 
 export async function setType({ chart_type, _deps }: any = {}) {
