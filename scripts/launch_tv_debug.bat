@@ -44,16 +44,17 @@ timeout /t 5 /nobreak >nul
 set TRIES=0
 :check
 curl -s http://localhost:%PORT%/json/version >nul 2>&1
-if %errorlevel% neq 0 (
-    set /a TRIES+=1
-    if %TRIES% geq 30 (
-        echo Error: CDP not responding after 30 attempts. TradingView may still be loading.
-        exit /b 1
-    )
-    echo Still waiting... ^(%TRIES%/30^)
-    timeout /t 2 /nobreak >nul
-    goto check
+if %errorlevel% equ 0 goto ready
+set /a TRIES+=1
+if %TRIES% geq 30 (
+    echo Error: CDP not responding after 30 attempts. TradingView may still be loading.
+    exit /b 1
 )
+echo Still waiting... (%TRIES%/30)
+timeout /t 2 /nobreak >nul
+goto check
+
+:ready
 
 echo.
 echo CDP ready at http://localhost:%PORT%
