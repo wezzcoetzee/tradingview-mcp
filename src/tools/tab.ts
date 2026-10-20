@@ -1,27 +1,37 @@
 import { z } from 'zod';
-import { jsonResult } from './_format.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { defineTool, DESTRUCTIVE, IDEMPOTENT_WRITE, READ_ONLY, WRITE } from './_format.js';
 import * as core from '../core/tab.js';
 
-export function registerTabTools(server) {
-  server.tool('tab_list', 'List all open TradingView chart tabs', {}, async () => {
-    try { return jsonResult(await core.list()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+export function registerTabTools(server: McpServer) {
+  defineTool(server, {
+    name: 'tab_list',
+    description: 'List all open TradingView chart tabs',
+    annotations: READ_ONLY,
+    run: () => core.list(),
   });
 
-  server.tool('tab_new', 'Open a new chart tab', {}, async () => {
-    try { return jsonResult(await core.newTab()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'tab_new',
+    description: 'Open a new chart tab',
+    annotations: WRITE,
+    run: () => core.newTab(),
   });
 
-  server.tool('tab_close', 'Close the current chart tab', {}, async () => {
-    try { return jsonResult(await core.closeTab()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'tab_close',
+    description: 'Close the current chart tab',
+    annotations: DESTRUCTIVE,
+    run: () => core.closeTab(),
   });
 
-  server.tool('tab_switch', 'Switch to a chart tab by index', {
-    index: z.coerce.number().describe('Tab index (0-based, from tab_list)'),
-  }, async ({ index }) => {
-    try { return jsonResult(await core.switchTab({ index })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'tab_switch',
+    description: 'Switch to a chart tab by index',
+    inputSchema: {
+      index: z.coerce.number().describe('Tab index (0-based, from tab_list)'),
+    },
+    annotations: IDEMPOTENT_WRITE,
+    run: ({ index }) => core.switchTab({ index }),
   });
 }

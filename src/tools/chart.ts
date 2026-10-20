@@ -1,74 +1,102 @@
 import { z } from 'zod';
-import { jsonResult } from './_format.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { defineTool, DESTRUCTIVE, IDEMPOTENT_WRITE, READ_ONLY } from './_format.js';
 import * as core from '../core/chart.js';
 
-export function registerChartTools(server) {
-  server.tool('chart_get_state', 'Get current chart state (symbol, timeframe, chart type, indicators)', {}, async () => {
-    try { return jsonResult(await core.getState()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+export function registerChartTools(server: McpServer) {
+  defineTool(server, {
+    name: 'chart_get_state',
+    description: 'Get current chart state (symbol, timeframe, chart type, indicators)',
+    annotations: READ_ONLY,
+    run: () => core.getState(),
   });
 
-  server.tool('chart_set_symbol', 'Change the chart symbol', {
-    symbol: z.string().describe('Symbol to set (e.g., BTCUSD, AAPL, ES1!, NYMEX:CL1!)'),
-  }, async ({ symbol }) => {
-    try { return jsonResult(await core.setSymbol({ symbol })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'chart_set_symbol',
+    description: 'Change the chart symbol',
+    inputSchema: {
+      symbol: z.string().describe('Symbol to set (e.g., BTCUSD, AAPL, ES1!, NYMEX:CL1!)'),
+    },
+    annotations: IDEMPOTENT_WRITE,
+    run: ({ symbol }) => core.setSymbol({ symbol }),
   });
 
-  server.tool('chart_set_timeframe', 'Change the chart timeframe/resolution', {
-    timeframe: z.string().describe('Timeframe (e.g., 1, 5, 15, 60, D, W, M)'),
-  }, async ({ timeframe }) => {
-    try { return jsonResult(await core.setTimeframe({ timeframe })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'chart_set_timeframe',
+    description: 'Change the chart timeframe/resolution',
+    inputSchema: {
+      timeframe: z.string().describe('Timeframe (e.g., 1, 5, 15, 60, D, W, M)'),
+    },
+    annotations: IDEMPOTENT_WRITE,
+    run: ({ timeframe }) => core.setTimeframe({ timeframe }),
   });
 
-  server.tool('chart_set_type', 'Change chart type', {
-    chart_type: z.string().describe('Chart type: Bars(0), Candles(1), Line(2), Area(3), Renko(4), Kagi(5), PointAndFigure(6), LineBreak(7), HeikinAshi(8), HollowCandles(9) — pass name or number'),
-  }, async ({ chart_type }) => {
-    try { return jsonResult(await core.setType({ chart_type })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'chart_set_type',
+    description: 'Change chart type',
+    inputSchema: {
+      chart_type: z.string().describe('Chart type: Bars(0), Candles(1), Line(2), Area(3), Renko(4), Kagi(5), PointAndFigure(6), LineBreak(7), HeikinAshi(8), HollowCandles(9) — pass name or number'),
+    },
+    annotations: IDEMPOTENT_WRITE,
+    run: ({ chart_type }) => core.setType({ chart_type }),
   });
 
-  server.tool('chart_manage_indicator', 'Add or remove an indicator/study on the chart', {
-    action: z.enum(['add', 'remove']).describe('Action: add or remove'),
-    indicator: z.string().describe('Full indicator name: "Relative Strength Index", "MACD", "Volume", "Moving Average", "Bollinger Bands", "Moving Average Exponential". Short names like RSI/EMA do NOT work.'),
-    entity_id: z.string().optional().describe('Entity ID to remove (from chart_get_state). Required for remove.'),
-    inputs: z.string().optional().describe('JSON string of input overrides for the indicator (e.g., \'{"length": 20}\')'),
-  }, async ({ action, indicator, entity_id, inputs }) => {
-    try { return jsonResult(await core.manageIndicator({ action, indicator, entity_id, inputs })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'chart_manage_indicator',
+    description: 'Add or remove an indicator/study on the chart',
+    inputSchema: {
+      action: z.enum(['add', 'remove']).describe('Action: add or remove'),
+      indicator: z.string().describe('Full indicator name: "Relative Strength Index", "MACD", "Volume", "Moving Average", "Bollinger Bands", "Moving Average Exponential". Short names like RSI/EMA do NOT work.'),
+      entity_id: z.string().optional().describe('Entity ID to remove (from chart_get_state). Required for remove.'),
+      inputs: z.string().optional().describe('JSON string of input overrides for the indicator (e.g., \'{"length": 20}\')'),
+    },
+    annotations: DESTRUCTIVE,
+    run: ({ action, indicator, entity_id, inputs }) => core.manageIndicator({ action, indicator, entity_id, inputs }),
   });
 
-  server.tool('chart_get_visible_range', 'Get the visible date range (unix timestamps) and bars range on the chart', {}, async () => {
-    try { return jsonResult(await core.getVisibleRange()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'chart_get_visible_range',
+    description: 'Get the visible date range (unix timestamps) and bars range on the chart',
+    annotations: READ_ONLY,
+    run: () => core.getVisibleRange(),
   });
 
-  server.tool('chart_set_visible_range', 'Zoom the chart to a specific date range (unix timestamps)', {
-    from: z.coerce.number().describe('Start of range (unix timestamp in seconds)'),
-    to: z.coerce.number().describe('End of range (unix timestamp in seconds)'),
-  }, async ({ from, to }) => {
-    try { return jsonResult(await core.setVisibleRange({ from, to })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'chart_set_visible_range',
+    description: 'Zoom the chart to a specific date range (unix timestamps)',
+    inputSchema: {
+      from: z.coerce.number().describe('Start of range (unix timestamp in seconds)'),
+      to: z.coerce.number().describe('End of range (unix timestamp in seconds)'),
+    },
+    annotations: IDEMPOTENT_WRITE,
+    run: ({ from, to }) => core.setVisibleRange({ from, to }),
   });
 
-  server.tool('chart_scroll_to_date', 'Jump the chart view to center on a specific date', {
-    date: z.string().describe('ISO date string (e.g., "2024-01-15") or unix timestamp as a string'),
-  }, async ({ date }) => {
-    try { return jsonResult(await core.scrollToDate({ date })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'chart_scroll_to_date',
+    description: 'Jump the chart view to center on a specific date',
+    inputSchema: {
+      date: z.string().describe('ISO date string (e.g., "2024-01-15") or unix timestamp as a string'),
+    },
+    annotations: IDEMPOTENT_WRITE,
+    run: ({ date }) => core.scrollToDate({ date }),
   });
 
-  server.tool('symbol_info', 'Get detailed metadata about the current symbol (name, exchange, type, description)', {}, async () => {
-    try { return jsonResult(await core.symbolInfo()); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'symbol_info',
+    description: 'Get detailed metadata about the current symbol (name, exchange, type, description)',
+    annotations: READ_ONLY,
+    run: () => core.symbolInfo(),
   });
 
-  server.tool('symbol_search', 'Search for symbols by name or keyword', {
-    query: z.string().describe('Search query (e.g., "AAPL", "crude oil", "ES")'),
-    type: z.string().optional().describe('Filter by type (e.g., "stock", "futures", "crypto", "forex")'),
-  }, async ({ query, type }) => {
-    try { return jsonResult(await core.symbolSearch({ query, type })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  defineTool(server, {
+    name: 'symbol_search',
+    description: 'Search for symbols by name or keyword',
+    inputSchema: {
+      query: z.string().describe('Search query (e.g., "AAPL", "crude oil", "ES")'),
+      type: z.string().optional().describe('Filter by type (e.g., "stock", "futures", "crypto", "forex")'),
+    },
+    annotations: READ_ONLY,
+    run: ({ query, type }) => core.symbolSearch({ query, type }),
   });
 }
