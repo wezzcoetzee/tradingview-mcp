@@ -4,6 +4,7 @@
  * They throw on error (callers catch and format).
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { waitFor, type WaitOptions } from '../wait.js';
 
 /** CDP modifier bitmask for the platform's shortcut key: Cmd (4) on macOS, Ctrl (2) elsewhere. */
 export function shortcutModifier(platform: NodeJS.Platform): 2 | 4 {
@@ -132,6 +133,18 @@ export function analyze({ source }: any = {}) {
     }
   }
 
+  // Any mutation makes a declared size stale, so stop trusting it
+  const mutator = /(?:array\.(\w+)\(\s*(\w+)|(\w+)\.(\w+)\()/g;
+  const MUTATORS = new Set(['push', 'unshift', 'insert', 'pop', 'shift', 'remove', 'clear']);
+  for (const line of lines) {
+    let m;
+    while ((m = mutator.exec(line)) !== null) {
+      const [method, name] = m[1] ? [m[1], m[2]] : [m[4], m[3]];
+      const info = arrays.get(name);
+      if (info && MUTATORS.has(method)) info.size = null;
+    }
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const pattern = /array\.(get|set)\(\s*(\w+)\s*,\s*(-?\d+)/g;
@@ -208,11 +221,11 @@ export function analyze({ source }: any = {}) {
   };
 }
 
-export async function check({ source }: any = {}) {
+export async function check({ source, fetchFn = fetch }: { source: string; fetchFn?: typeof fetch }) {
   const formData = new URLSearchParams();
   formData.append('source', source);
 
-  const response = await fetch(
+  const response = await fetchFn(
     'https://pine-facade.tradingview.com/pine-facade/translate_light?user_name=Guest&pine_id=00000000-0000-0000-0000-000000000000',
     {
       method: 'POST',
@@ -229,10 +242,16 @@ export async function check({ source }: any = {}) {
     throw new Error(`TradingView API returned ${response.status}: ${response.statusText}`);
   }
 
-  const result = await response.json();
+  const contentType = response.headers.get('content-type') ?? '';
+  const result = contentType.includes('json') ? await response.json().catch(() => null) : null;
+  const inner = result?.result;
+  if (!inner || typeof inner !== 'object') {
+    if (typeof result?.error !== 'string') {
+      throw new Error(`TradingView API returned an unexpected response (${contentType || 'no content type'}); compile status unknown.`);
+    }
+  }
   const errors = [];
   const warnings = [];
-  const inner = result?.result;
 
   if (inner) {
     if (inner.errors2 && inner.errors2.length > 0) {
@@ -336,9 +355,69 @@ export async function setSource({ source }: { source: string }) {
   return { success: true, lines_set: source.split('\n').length, script_name: await readEditorTitle() };
 }
 
+/** Monaco marker severities: Hint 1, Info 2, Warning 4, Error 8. */
+const ERROR_SEVERITY = 8;
+
+export interface Marker { line: number; column: number; message: string; severity: number }
+
+/** Split markers into errors and non-error markers; only severity >= 8 fails a build. */
+export function summarizeMarkers(markers: readonly Marker[] = []) {
+  const errors = markers.filter(m => m.severity >= ERROR_SEVERITY);
+  const warnings = markers.filter(m => m.severity < ERROR_SEVERITY);
+  return { has_errors: errors.length > 0, error_count: errors.length, warning_count: warnings.length, errors, warnings };
+}
+
+const READ_MARKERS = `
+  (function() {
+    var m = ${FIND_MONACO};
+    if (!m) return [];
+    var model = m.editor.getModel();
+    if (!model) return [];
+    return m.env.editor.getModelMarkers({ resource: model.uri }).map(function(mk) {
+      return { line: mk.startLineNumber, column: mk.startColumn, message: mk.message, severity: mk.severity };
+    });
+  })()
+`;
+
+const READ_STUDY_COUNT = `
+  (function() {
+    try {
+      var chart = window.TradingViewApi._activeChartWidgetWV.value();
+      if (chart && typeof chart.getAllStudies === 'function') return chart.getAllStudies().length;
+    } catch(e) {}
+    return null;
+  })()
+`;
+
+const COMPILE_SNAPSHOT = `({ markers: ${READ_MARKERS}, studies: ${READ_STUDY_COUNT} })`;
+
+const COMPILE_TIMEOUT_MS = 6000;
+
+interface CompileSnapshot { markers: Marker[]; studies: number | null }
+
+/**
+ * Wait for evidence that a compile finished: the markers changed or the chart's study count changed.
+ * A recompile that leaves both identical is indistinguishable from no compile, so it times out unconfirmed.
+ */
+export async function awaitCompile(before: CompileSnapshot, opts: Omit<WaitOptions, 'timeout'> & { timeout?: number } = {}) {
+  const markersBefore = JSON.stringify(before.markers);
+  const { ok, value } = await waitFor<CompileSnapshot>(
+    COMPILE_SNAPSHOT,
+    (s) => JSON.stringify(s.markers) !== markersBefore || (s.studies !== null && s.studies !== before.studies),
+    { timeout: COMPILE_TIMEOUT_MS, ...opts },
+  );
+  return { confirmed: ok, after: value ?? before };
+}
+
+function unconfirmedNote(timeoutMs = COMPILE_TIMEOUT_MS) {
+  return `No change in editor markers or chart studies within ${timeoutMs / 1000}s, so this compile could not be confirmed. The markers shown may belong to the previous compile.`;
+}
+
 export async function compile() {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
+
+  const before = await evaluate(COMPILE_SNAPSHOT) as CompileSnapshot;
 
   const clicked = await evaluate(`
     (function() {
@@ -370,33 +449,22 @@ export async function compile() {
     await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter' });
   }
 
-  await new Promise(r => setTimeout(r, 2000));
-  return { success: true, button_clicked: clicked || 'keyboard_shortcut', source: 'dom_fallback' };
+  const { confirmed } = await awaitCompile(before);
+  return {
+    success: true,
+    button_clicked: clicked || 'keyboard_shortcut',
+    source: 'dom_fallback',
+    compile_confirmed: confirmed,
+    note: confirmed ? undefined : unconfirmedNote(),
+  };
 }
 
 export async function getErrors() {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
-  const errors = await evaluate(`
-    (function() {
-      var m = ${FIND_MONACO};
-      if (!m) return [];
-      var model = m.editor.getModel();
-      if (!model) return [];
-      var markers = m.env.editor.getModelMarkers({ resource: model.uri });
-      return markers.map(function(mk) {
-        return { line: mk.startLineNumber, column: mk.startColumn, message: mk.message, severity: mk.severity };
-      });
-    })()
-  `);
-
-  return {
-    success: true,
-    has_errors: errors?.length > 0,
-    error_count: errors?.length || 0,
-    errors: errors || [],
-  };
+  const markers = await evaluate(READ_MARKERS) as Marker[] | null;
+  return { success: true, ...summarizeMarkers(markers ?? []) };
 }
 
 export async function save() {
@@ -508,15 +576,7 @@ export async function smartCompile() {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
-  const studiesBefore = await evaluate(`
-    (function() {
-      try {
-        var chart = window.TradingViewApi._activeChartWidgetWV.value();
-        if (chart && typeof chart.getAllStudies === 'function') return chart.getAllStudies().length;
-      } catch(e) {}
-      return null;
-    })()
-  `);
+  const before = await evaluate(COMPILE_SNAPSHOT) as CompileSnapshot;
 
   const buttonClicked = await evaluate(`
     (function() {
@@ -547,39 +607,16 @@ export async function smartCompile() {
     await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter' });
   }
 
-  await new Promise(r => setTimeout(r, 2500));
-
-  const errors = await evaluate(`
-    (function() {
-      var m = ${FIND_MONACO};
-      if (!m) return [];
-      var model = m.editor.getModel();
-      if (!model) return [];
-      var markers = m.env.editor.getModelMarkers({ resource: model.uri });
-      return markers.map(function(mk) {
-        return { line: mk.startLineNumber, column: mk.startColumn, message: mk.message, severity: mk.severity };
-      });
-    })()
-  `);
-
-  const studiesAfter = await evaluate(`
-    (function() {
-      try {
-        var chart = window.TradingViewApi._activeChartWidgetWV.value();
-        if (chart && typeof chart.getAllStudies === 'function') return chart.getAllStudies().length;
-      } catch(e) {}
-      return null;
-    })()
-  `);
-
-  const studyAdded = (studiesBefore !== null && studiesAfter !== null) ? studiesAfter > studiesBefore : null;
+  const { confirmed, after } = await awaitCompile(before);
+  const studyAdded = before.studies !== null && after.studies !== null ? after.studies > before.studies : null;
 
   return {
     success: true,
     button_clicked: buttonClicked || 'keyboard_shortcut',
-    has_errors: errors?.length > 0,
-    errors: errors || [],
+    compile_confirmed: confirmed,
+    ...summarizeMarkers(after.markers),
     study_added: studyAdded,
+    note: confirmed ? undefined : unconfirmedNote(),
   };
 }
 
