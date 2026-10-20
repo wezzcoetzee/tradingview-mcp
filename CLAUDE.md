@@ -69,7 +69,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `draw_clear` → remove all
 
 ### "Manage alerts"
-- `alert_create` → set price alert (condition: "crossing", "greater_than", "less_than")
+- `alert_create` → set price alert (condition is set in the TradingView dialog; returns `alert_id` once confirmed in `alert_list`)
 - `alert_list` → view active alerts
 - `alert_delete` → remove alerts
 

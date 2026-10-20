@@ -3,7 +3,30 @@
  */
 import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
 
-export async function create({ price, message }: any = {}) {
+interface AlertSummary { alert_id: string | number }
+
+/** Returns the first alert in `after` whose id is not in `before`. */
+export function findNewAlert<T extends AlertSummary>(before: AlertSummary[], after: T[]): T | undefined {
+  const known = new Set(before.map(a => a.alert_id));
+  return after.find(a => !known.has(a.alert_id));
+}
+
+// Every DOM step in create() is scoped to this element so we never touch unrelated page controls.
+const ALERT_DIALOG_JS = `(document.querySelector('[data-name="alerts-create-edit-dialog"]')
+  || document.querySelector('[role="dialog"][class*="alert"], [role="dialog"][data-name*="alert"]'))`;
+
+async function closeDialog() {
+  const client = await getClient();
+  await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+}
+
+export async function create({ price, message }: { price: number; message?: string }) {
+  const before = await list();
+  if (before.error) {
+    return { success: false, error: `Cannot verify alert creation, alert list unavailable: ${before.error}` };
+  }
+
   const opened = await evaluate(`
     (function() {
       var btn = document.querySelector('[aria-label="Create Alert"]')
@@ -21,34 +44,40 @@ export async function create({ price, message }: any = {}) {
 
   await new Promise(r => setTimeout(r, 1000));
 
-  const priceSet = await evaluate(`
+  const fill = await evaluate(`
     (function() {
-      var inputs = document.querySelectorAll('[class*="alert"] input[type="text"], [class*="alert"] input[type="number"]');
-      for (var i = 0; i < inputs.length; i++) {
+      var dialog = ${ALERT_DIALOG_JS};
+      if (!dialog) return { dialogFound: false, priceSet: false };
+      var inputs = dialog.querySelectorAll('input[type="text"], input[type="number"]');
+      var target = null;
+      for (var i = 0; i < inputs.length && !target; i++) {
         var label = inputs[i].closest('[class*="row"]')?.querySelector('[class*="label"]');
-        if (label && /value|price/i.test(label.textContent)) {
-          var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-          nativeSet.call(inputs[i], ${safeString(String(price))});
-          inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
-          inputs[i].dispatchEvent(new Event('change', { bubbles: true }));
-          return true;
-        }
+        if (label && /value|price/i.test(label.textContent)) target = inputs[i];
       }
-      if (inputs.length > 0) {
-        var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        nativeSet.call(inputs[0], ${safeString(String(price))});
-        inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-        return true;
-      }
-      return false;
+      target = target || inputs[0];
+      if (!target) return { dialogFound: true, priceSet: false };
+      var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      nativeSet.call(target, ${safeString(String(price))});
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+      return { dialogFound: true, priceSet: true };
     })()
   `);
+
+  if (!fill?.dialogFound || !fill.priceSet) {
+    if (fill?.dialogFound) await closeDialog();
+    return {
+      success: false,
+      error: fill?.dialogFound ? 'Could not set the price in the alert dialog' : 'Alert dialog not found',
+      price_set: false,
+    };
+  }
 
   if (message) {
     await evaluate(`
       (function() {
-        var textarea = document.querySelector('[class*="alert"] textarea')
-          || document.querySelector('textarea[placeholder*="message"]');
+        var dialog = ${ALERT_DIALOG_JS};
+        var textarea = dialog && dialog.querySelector('textarea');
         if (textarea) {
           var nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
           nativeSet.call(textarea, ${JSON.stringify(message)});
@@ -59,9 +88,11 @@ export async function create({ price, message }: any = {}) {
   }
 
   await new Promise(r => setTimeout(r, 500));
-  const created = await evaluate(`
+  const submitted = await evaluate(`
     (function() {
-      var btns = document.querySelectorAll('button[data-name="submit"], button');
+      var dialog = ${ALERT_DIALOG_JS};
+      if (!dialog) return false;
+      var btns = dialog.querySelectorAll('button');
       for (var i = 0; i < btns.length; i++) {
         if (/^create$/i.test(btns[i].textContent.trim())) { btns[i].click(); return true; }
       }
@@ -69,7 +100,30 @@ export async function create({ price, message }: any = {}) {
     })()
   `);
 
-  return { success: !!created, price, message: message || '(none)', price_set: !!priceSet, note: 'Condition must be set manually in the TradingView dialog before clicking Create.', source: 'dom_fallback' };
+  if (!submitted) {
+    await closeDialog();
+    return { success: false, error: 'Create button not found in the alert dialog', price_set: true };
+  }
+
+  // The alert list is server-backed, so give it a few seconds to reflect the new alert
+  let after = before;
+  let created: AlertSummary | undefined;
+  for (let i = 0; i < 6 && !created; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    after = await list();
+    created = findNewAlert(before.alerts, after.alerts);
+  }
+
+  if (!created) {
+    return {
+      success: false,
+      error: after.error || 'Create was clicked but no new alert appeared in the alert list. Check the condition in the TradingView dialog.',
+      price,
+      price_set: true,
+    };
+  }
+
+  return { success: true, price, message: message || '(none)', price_set: true, alert_id: created.alert_id, note: 'Condition must be set manually in the TradingView dialog before clicking Create.', source: 'dom_fallback' };
 }
 
 export async function list() {
@@ -100,7 +154,7 @@ export async function list() {
       })
       .catch(function(e) { return { alerts: [], error: e.message }; })
   `);
-  return { success: true, alert_count: result?.alerts?.length || 0, source: 'internal_api', alerts: result?.alerts || [], error: result?.error };
+  return { success: true, alert_count: result?.alerts?.length || 0, source: 'internal_api', alerts: (result?.alerts || []) as AlertSummary[], error: result?.error as string | undefined };
 }
 
 export async function deleteAlerts({ delete_all }: any = {}) {
