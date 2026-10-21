@@ -6,6 +6,7 @@ import { waitForChartReady as _waitForChartReady } from '../wait.js';
 import { getOhlcv } from './data.js';
 import { captureScreenshot as _captureScreenshot } from './capture.js';
 import type { ReportProgress } from './progress.js';
+import { sleep } from './_page.js';
 
 export const BATCH_ACTIONS = ['screenshot', 'get_ohlcv', 'get_strategy_results'] as const;
 export type BatchAction = (typeof BATCH_ACTIONS)[number];
@@ -50,7 +51,7 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
             const seen = ready.value ? `${ready.value.symbol} ${ready.value.resolution}` : 'unknown';
             throw new Error(`Chart did not reach ${symbol}${tf ? ` ${tf}` : ''} (last seen: ${seen})`);
           }
-          await new Promise(r => setTimeout(r, delay));
+          await sleep(delay);
 
           let actionResult;
           if (action === 'screenshot') {
@@ -60,7 +61,7 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
           } else if (action === 'get_ohlcv') {
             actionResult = await getOhlcv({ count: ohlcv_count, summary: true, _deps: { evaluate } });
           } else {
-            await new Promise(r => setTimeout(r, 1000));
+            await sleep(1000);
             actionResult = await evaluate(`
               (function() {
                 var metrics = {};

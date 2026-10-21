@@ -14,3 +14,6 @@ export * as batch from './batch.js';
 export * as watchlist from './watchlist.js';
 export * as indicators from './indicators.js';
 export * as ui from './ui.js';
+export * as pane from './pane.js';
+export * as tab from './tab.js';
+export * as stream from './stream.js';

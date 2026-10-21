@@ -9,6 +9,12 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf-8');
 }
 
+async function readSource(file?: string) {
+  const source = file ? readFileSync(file, 'utf-8') : await readStdin();
+  if (!source) throw new Error('No source provided. Pipe source via stdin or use --file.');
+  return source;
+}
+
 register('pine', {
   description: 'Pine Script tools',
   subcommands: new Map<string, any>([
@@ -22,13 +28,7 @@ register('pine', {
         file: { type: 'string', short: 'f', description: 'Read source from file' },
       },
       handler: async (opts) => {
-        let source;
-        if (opts.file) {
-          source = readFileSync(opts.file, 'utf-8');
-        } else {
-          source = await readStdin();
-        }
-        if (!source) throw new Error('No source provided. Pipe source via stdin or use --file.');
+        const source = await readSource(opts.file);
         return core.setSource({ source });
       },
     }],
@@ -46,13 +46,7 @@ register('pine', {
         file: { type: 'string', short: 'f', description: 'Read source from file' },
       },
       handler: async (opts) => {
-        let source;
-        if (opts.file) {
-          source = readFileSync(opts.file, 'utf-8');
-        } else {
-          source = await readStdin();
-        }
-        if (!source) throw new Error('No source provided. Pipe source via stdin or use --file.');
+        const source = await readSource(opts.file);
         return core.analyze({ source });
       },
     }],
@@ -62,13 +56,7 @@ register('pine', {
         file: { type: 'string', short: 'f', description: 'Read source from file' },
       },
       handler: async (opts) => {
-        let source;
-        if (opts.file) {
-          source = readFileSync(opts.file, 'utf-8');
-        } else {
-          source = await readStdin();
-        }
-        if (!source) throw new Error('No source provided. Pipe source via stdin or use --file.');
+        const source = await readSource(opts.file);
         return core.check({ source });
       },
     }],

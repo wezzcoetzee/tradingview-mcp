@@ -4,12 +4,13 @@
 import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, getReplayApi as _getReplayApi, requireFinite } from '../connection.js';
 import { waitFor } from '../wait.js';
 import type { ReportProgress } from './progress.js';
+import { sleep, UNWRAP_FN } from './_page.js';
 
 export const TRADE_ACTIONS = ['buy', 'sell', 'close'] as const;
 export const VALID_AUTOPLAY_DELAYS = [100, 143, 200, 300, 1000, 2000, 3000, 5000, 10000];
 
 function wv(path) {
-  return `(function(){ var v = ${path}; return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; })()`;
+  return `(function(){ ${UNWRAP_FN} return unwrap(${path}); })()`;
 }
 
 export const MAX_STEP_COUNT = 500;
@@ -62,7 +63,7 @@ export async function start({ date, _deps }: any = {}) {
     started = await evaluate(wv(`${rp}.isReplayStarted()`));
     currentDate = await evaluate(wv(`${rp}.currentDate()`));
     if (started && currentDate !== null) break;
-    await new Promise(r => setTimeout(r, waitOpts.interval ?? 250));
+    await sleep(waitOpts.interval ?? 250);
   }
 
   if (!started || currentDate === null || currentDate === undefined) {
@@ -166,7 +167,7 @@ export async function trade({ action, _deps }: any = {}) {
   const readPosition = `
     (function() {
       var r = ${rp};
-      function unwrap(v) { return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; }
+      ${UNWRAP_FN}
       return { position: unwrap(r.position()), realized_pnl: unwrap(r.realizedPL()) };
     })()
   `;
@@ -194,7 +195,7 @@ export async function status({ _deps }: any = {}) {
   const st = await evaluate(`
     (function() {
       var r = ${rp};
-      function unwrap(v) { return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; }
+      ${UNWRAP_FN}
       return {
         is_replay_available: unwrap(r.isReplayAvailable()),
         is_replay_started: unwrap(r.isReplayStarted()),

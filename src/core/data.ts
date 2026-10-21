@@ -1,14 +1,12 @@
 /**
  * Core data access logic.
  */
-import { evaluate as _evaluate, evaluateAsync, KNOWN_PATHS, safeString, requireFinite } from '../connection.js';
-
-const evaluate = _evaluate;
+import { evaluate, KNOWN_PATHS, safeString, requireFinite } from '../connection.js';
+import { CHART_API } from './_page.js';
 import { symbolMatches } from '../wait.js';
 
 const MAX_OHLCV_BARS = 500;
 const MAX_TRADES = 20;
-const CHART_API = KNOWN_PATHS.chartApi;
 const BARS_PATH = KNOWN_PATHS.mainSeriesBars;
 
 // In-page helper: locate the first strategy data source on the chart.

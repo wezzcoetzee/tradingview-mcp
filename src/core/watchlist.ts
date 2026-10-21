@@ -3,6 +3,7 @@
  * Uses TradingView's internal widget API with DOM fallback.
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { sleep } from './_page.js';
 
 export async function get({ _deps }: any = {}) {
   // Try internal API first — reads from the active watchlist widget
@@ -94,7 +95,7 @@ export async function add({ symbol }: { symbol: string }) {
   `);
 
   if (panelState?.error) throw new Error(panelState.error);
-  if (panelState?.opened) await new Promise(r => setTimeout(r, 500));
+  if (panelState?.opened) await sleep(500);
 
   // Click the "Add symbol" button (various selectors)
   const addClicked = await evaluate(`
@@ -126,7 +127,7 @@ export async function add({ symbol }: { symbol: string }) {
   `);
 
   if (!addClicked?.found) throw new Error('Add symbol button not found in watchlist panel');
-  await new Promise(r => setTimeout(r, 300));
+  await sleep(300);
 
   // Only type if the focused element is a text input inside the watchlist panel or a dialog
   const inputFocused = await evaluate(`
@@ -142,18 +143,18 @@ export async function add({ symbol }: { symbol: string }) {
 
   // Type the symbol into the search input
   await c.Input.insertText({ text: symbol });
-  await new Promise(r => setTimeout(r, 500));
+  await sleep(500);
 
   // Press Enter to select the first result
   await c.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
   await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter' });
-  await new Promise(r => setTimeout(r, 300));
+  await sleep(300);
 
   // Press Escape to close search
   await c.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape' });
 
-  await new Promise(r => setTimeout(r, 500));
+  await sleep(500);
   const { symbols } = await get();
   if (!symbols.some((s: { symbol: string }) => symbolMatches(symbol, s.symbol))) {
     return { success: false, symbol, error: 'Symbol not found in the watchlist after adding' };

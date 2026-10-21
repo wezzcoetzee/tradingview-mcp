@@ -2,6 +2,7 @@
  * Core UI automation logic.
  */
 import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
+import { sleep } from './_page.js';
 
 export async function click({ by, value }: any = {}) {
   const escaped = safeString(value);
@@ -142,7 +143,7 @@ export async function layoutSwitch({ name }: any = {}) {
   if (!result?.success) throw new Error(result?.error || 'Unknown error switching layout');
 
   // Handle "unsaved changes" confirmation dialog
-  await new Promise(r => setTimeout(r, 500));
+  await sleep(500);
   const dismissed = await evaluate(`
     (function() {
       var btns = document.querySelectorAll('button');
@@ -157,7 +158,7 @@ export async function layoutSwitch({ name }: any = {}) {
     })()
   `);
 
-  if (dismissed) await new Promise(r => setTimeout(r, 1000));
+  if (dismissed) await sleep(1000);
   return { success: true, layout: result.name || name, layout_id: result.id, source: result.source, action: 'switched', unsaved_dialog_dismissed: dismissed };
 }
 
@@ -272,7 +273,7 @@ export async function mouseClick({ x, y, button, double_click }: any = {}) {
   await c.Input.dispatchMouseEvent({ type: 'mouseMoved', x, y });
   for (const event of clickEvents(x, y, btn, 1)) await c.Input.dispatchMouseEvent(event);
   if (double_click) {
-    await new Promise(r => setTimeout(r, 50));
+    await sleep(50);
     for (const event of clickEvents(x, y, btn, 2)) await c.Input.dispatchMouseEvent(event);
   }
   return { success: true, x, y, button: btn, double_click: !!double_click };

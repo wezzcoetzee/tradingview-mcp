@@ -1,14 +1,9 @@
 /**
  * Core indicator settings logic.
  */
-import { evaluate as _evaluate, safeString } from '../connection.js';
+import { safeString } from '../connection.js';
 import { parseJsonObject } from './json.js';
-
-const CHART_API = 'window.TradingViewApi._activeChartWidgetWV.value()';
-
-function _resolve(deps) {
-  return { evaluate: deps?.evaluate || _evaluate };
-}
+import { CHART_API, resolveDeps as _resolve } from './_page.js';
 
 export interface SetInputsResult {
   success: boolean;
