@@ -1,4 +1,4 @@
-import { afterEach, describe, it, mock } from 'bun:test';
+import { beforeEach, afterEach, describe, it, mock } from 'bun:test';
 import assert from 'node:assert/strict';
 import * as connection from '../src/connection.js';
 import { switchTab } from '../src/core/tab.js';
@@ -6,12 +6,18 @@ import { debug, isDebugEnabled } from '../src/debug.js';
 
 describe('connection — CDP lifecycle', () => {
   const realFetch = globalThis.fetch;
+  const originalAutoLaunch = process.env.TV_MCP_AUTO_LAUNCH;
+  beforeEach(() => { process.env.TV_MCP_AUTO_LAUNCH = '0'; });
   const stubFetch = (handler: (url: string) => Response) => {
     const fn = mock(async (input: string | URL | Request) => handler(String(input)));
     globalThis.fetch = fn as unknown as typeof fetch;
     return fn;
   };
-  afterEach(() => { globalThis.fetch = realFetch; });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    if (originalAutoLaunch === undefined) delete process.env.TV_MCP_AUTO_LAUNCH;
+    else process.env.TV_MCP_AUTO_LAUNCH = originalAutoLaunch;
+  });
 
   it('treats connection-refused as fatal and everything else as transient', () => {
     assert.equal(connection.isTransientError(Object.assign(new Error('x'), { code: 'ECONNREFUSED' })), false);

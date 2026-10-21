@@ -43,7 +43,7 @@ if [ -z "$APP" ] || [ ! -f "$APP" ]; then
   exit 1
 fi
 
-APP_BUNDLE="${APP%/Contents/MacOS/TradingView}.app"
+APP_BUNDLE="${APP%/Contents/MacOS/TradingView}"
 # Kill the entire app process tree (main executable + Chromium helpers).
 # Exact matching of only "$APP" misses the trailing CDP args and leaves stale
 # helper processes behind, so match commands rooted inside this app bundle.

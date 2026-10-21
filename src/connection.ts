@@ -43,6 +43,11 @@ interface EvaluateOptions {
 let current: Connection | null = null;
 let pendingConnect: Promise<Connection> | null = null;
 let preferredTargetId: string | null = null;
+let autoLaunchAttempted = false;
+
+export function resetAutoLaunchLatch() {
+  autoLaunchAttempted = false;
+}
 
 export function parseCdpPort(value: unknown): number {
   const port = Number(value);
@@ -227,6 +232,16 @@ async function establish(): Promise<Connection> {
       return conn;
     } catch (err) {
       const msg = errorMessage(err);
+      if (!isTransientError(err) && process.env.TV_MCP_AUTO_LAUNCH !== '0' && !autoLaunchAttempted) {
+        autoLaunchAttempted = true;
+        try {
+          const { launch } = await import('./core/health.js');
+          await launch();
+          continue;
+        } catch (launchError) {
+          debug('connection', `auto-launch failed: ${errorMessage(launchError)}`);
+        }
+      }
       if (!isTransientError(err)) {
         throw new Error(`Cannot reach TradingView at ${cdpBaseUrl()} (${msg}). Start it with tv_launch, or launch it with --remote-debugging-port=${cdpPort}.`);
       }

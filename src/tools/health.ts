@@ -36,4 +36,15 @@ export function registerHealthTools(server: McpServer) {
     annotations: DESTRUCTIVE,
     run: ({ port, kill_existing }) => core.launch({ port, kill_existing }),
   });
+
+  defineTool(server, {
+    name: 'tv_quit',
+    description: 'Quit TradingView Desktop after chart work to free RAM. Keep it open if the user requests it.',
+    inputSchema: {
+      only_if_agent_launched: zBool.optional().describe('Only quit if this MCP process launched TradingView (default false)'),
+      force: zBool.optional().describe('Force-kill if graceful shutdown fails (default true)'),
+    },
+    annotations: DESTRUCTIVE,
+    run: (options) => core.quit(options),
+  });
 }
