@@ -1,4 +1,4 @@
-import { register } from '../router.js';
+import { register, command } from '../router.js';
 import * as core from '../../core/stream.js';
 
 // Stream commands are special — they don't return JSON, they write JSONL to stdout forever.
@@ -7,8 +7,8 @@ import * as core from '../../core/stream.js';
 
 register('stream', {
   description: 'Monitor your local TradingView chart for changes (JSONL output)',
-  subcommands: new Map<string, any>([
-    ['quote', {
+  subcommands: new Map([
+    ['quote', command({
       description: 'Stream real-time price ticks (OHLCV per bar)',
       options: {
         interval: { type: 'string', short: 'i', description: 'Poll interval in ms (default 300)' },
@@ -17,8 +17,8 @@ register('stream', {
         await core.streamQuote({ interval: opts.interval ? Number(opts.interval) : undefined });
         process.exit(0); // unreachable unless stopped
       },
-    }],
-    ['bars', {
+    })],
+    ['bars', command({
       description: 'Stream last bar updates (emits on new bar or price change)',
       options: {
         interval: { type: 'string', short: 'i', description: 'Poll interval in ms (default 500)' },
@@ -27,8 +27,8 @@ register('stream', {
         await core.streamBars({ interval: opts.interval ? Number(opts.interval) : undefined });
         process.exit(0);
       },
-    }],
-    ['values', {
+    })],
+    ['values', command({
       description: 'Stream indicator values (RSI, MACD, etc.)',
       options: {
         interval: { type: 'string', short: 'i', description: 'Poll interval in ms (default 500)' },
@@ -37,8 +37,8 @@ register('stream', {
         await core.streamValues({ interval: opts.interval ? Number(opts.interval) : undefined });
         process.exit(0);
       },
-    }],
-    ['lines', {
+    })],
+    ['lines', command({
       description: 'Stream Pine Script line.new() price levels',
       options: {
         filter: { type: 'string', short: 'f', description: 'Filter by study name' },
@@ -48,8 +48,8 @@ register('stream', {
         await core.streamLines({ interval: opts.interval ? Number(opts.interval) : undefined, filter: opts.filter });
         process.exit(0);
       },
-    }],
-    ['labels', {
+    })],
+    ['labels', command({
       description: 'Stream Pine Script label.new() annotations',
       options: {
         filter: { type: 'string', short: 'f', description: 'Filter by study name' },
@@ -59,8 +59,8 @@ register('stream', {
         await core.streamLabels({ interval: opts.interval ? Number(opts.interval) : undefined, filter: opts.filter });
         process.exit(0);
       },
-    }],
-    ['tables', {
+    })],
+    ['tables', command({
       description: 'Stream Pine Script table.new() data',
       options: {
         filter: { type: 'string', short: 'f', description: 'Filter by study name' },
@@ -70,8 +70,8 @@ register('stream', {
         await core.streamTables({ interval: opts.interval ? Number(opts.interval) : undefined, filter: opts.filter });
         process.exit(0);
       },
-    }],
-    ['all', {
+    })],
+    ['all', command({
       description: 'Stream all panes at once (multi-symbol monitoring)',
       options: {
         interval: { type: 'string', short: 'i', description: 'Poll interval in ms (default 500)' },
@@ -80,6 +80,6 @@ register('stream', {
         await core.streamAllPanes({ interval: opts.interval ? Number(opts.interval) : undefined });
         process.exit(0);
       },
-    }],
+    })],
   ]),
 });

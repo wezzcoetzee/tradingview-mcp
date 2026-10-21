@@ -1,14 +1,14 @@
-import { register } from '../router.js';
+import { register, command } from '../router.js';
 import * as core from '../../core/alerts.js';
 
 register('alert', {
   description: 'Alert tools (list, create, delete)',
-  subcommands: new Map<string, any>([
-    ['list', {
+  subcommands: new Map([
+    ['list', command({
       description: 'List active alerts',
       handler: () => core.list(),
-    }],
-    ['create', {
+    })],
+    ['create', command({
       description: 'Create a price alert',
       options: {
         price: { type: 'string', short: 'p', description: 'Price level' },
@@ -18,14 +18,14 @@ register('alert', {
         price: Number(opts.price),
         message: opts.message,
       }),
-    }],
-    ['delete', {
+    })],
+    ['delete', command({
       description: 'Delete alerts',
       options: {
         id: { type: 'string', short: 'i', description: 'Alert id(s) from `alert list`, comma-separated' },
         all: { type: 'boolean', description: 'Delete all alerts' },
       },
       handler: (opts) => core.deleteAlerts({ alert_id: opts.id?.split(','), delete_all: opts.all }),
-    }],
+    })],
   ]),
 });

@@ -4,7 +4,20 @@
 import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
 import { sleep } from './_page.js';
 
-export async function click({ by, value }: any = {}) {
+export const SELECTOR_STRATEGIES = ['aria-label', 'data-name', 'text', 'class-contains'] as const;
+export const FIND_STRATEGIES = ['text', 'aria-label', 'css'] as const;
+export const SCROLL_DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
+export const PANELS = ['pine-editor', 'strategy-tester', 'watchlist', 'alerts', 'trading'] as const;
+export const PANEL_ACTIONS = ['open', 'close', 'toggle'] as const;
+
+export type SelectorStrategy = typeof SELECTOR_STRATEGIES[number];
+
+export interface ElementParams {
+  by: SelectorStrategy;
+  value: string;
+}
+
+export async function click({ by, value }: ElementParams) {
   const escaped = safeString(value);
   const result = await evaluate(`
     (function() {
@@ -30,7 +43,12 @@ export async function click({ by, value }: any = {}) {
   return { success: true, clicked: result };
 }
 
-export async function openPanel({ panel, action }: any = {}) {
+export interface OpenPanelParams {
+  panel: typeof PANELS[number];
+  action: typeof PANEL_ACTIONS[number];
+}
+
+export async function openPanel({ panel, action }: OpenPanelParams) {
   const isBottomPanel = panel === 'pine-editor' || panel === 'strategy-tester';
   if (isBottomPanel) {
     const widgetName = panel === 'pine-editor' ? 'pine-editor' : 'backtesting';
@@ -119,7 +137,7 @@ export async function layoutList() {
   return { success: true, layout_count: layouts?.layouts?.length || 0, source: layouts?.source, layouts: layouts?.layouts || [], error: layouts?.error };
 }
 
-export async function layoutSwitch({ name }: any = {}) {
+export async function layoutSwitch({ name }: { name: string }) {
   const escaped = JSON.stringify(name);
   const result = await evaluateAsync(`
     new Promise(function(resolve) {
@@ -207,13 +225,13 @@ export async function keyboard({ key, modifiers }: { key: string; modifiers?: Mo
   return { success: true, key, modifiers: modifiers || [] };
 }
 
-export async function typeText({ text }: any = {}) {
+export async function typeText({ text }: { text: string }) {
   const c = await getClient();
   await c.Input.insertText({ text });
   return { success: true, typed: text.substring(0, 100), length: text.length };
 }
 
-export async function hover({ by, value }: any = {}) {
+export async function hover({ by, value }: ElementParams) {
   const coords = await evaluate(`
     (function() {
       var by = ${JSON.stringify(by)};
@@ -240,7 +258,12 @@ export async function hover({ by, value }: any = {}) {
   return { success: true, hovered: { by, value, tag: coords.tag, x: coords.x, y: coords.y } };
 }
 
-export async function scroll({ direction, amount }: any = {}) {
+export interface ScrollParams {
+  direction: typeof SCROLL_DIRECTIONS[number];
+  amount?: number;
+}
+
+export async function scroll({ direction, amount }: ScrollParams) {
   const c = await getClient();
   const px = amount || 300;
   const center = await evaluate(`
@@ -267,7 +290,14 @@ export function clickEvents(x: number, y: number, button: 'left' | 'right' | 'mi
   ];
 }
 
-export async function mouseClick({ x, y, button, double_click }: any = {}) {
+export interface MouseClickParams {
+  x: number;
+  y: number;
+  button?: 'left' | 'right' | 'middle';
+  double_click?: boolean;
+}
+
+export async function mouseClick({ x, y, button, double_click }: MouseClickParams) {
   const c = await getClient();
   const btn = button === 'right' ? 'right' : button === 'middle' ? 'middle' : 'left';
   await c.Input.dispatchMouseEvent({ type: 'mouseMoved', x, y });
@@ -279,7 +309,12 @@ export async function mouseClick({ x, y, button, double_click }: any = {}) {
   return { success: true, x, y, button: btn, double_click: !!double_click };
 }
 
-export async function findElement({ query, strategy }: any = {}) {
+export interface FindElementParams {
+  query: string;
+  strategy?: typeof FIND_STRATEGIES[number];
+}
+
+export async function findElement({ query, strategy }: FindElementParams) {
   const strat = strategy || 'text';
   const results = await evaluate(`
     (function() {
@@ -320,7 +355,7 @@ export async function findElement({ query, strategy }: any = {}) {
 
 const MAX_EVAL_EXPR_LEN = 2000;
 
-export async function uiEvaluate({ expression }: any = {}) {
+export async function uiEvaluate({ expression }: { expression: string }) {
   if (process.env.TRADINGVIEW_MCP_ALLOW_EVAL !== '1') {
     throw new Error(
       'ui_evaluate is disabled. This tool runs arbitrary JS inside your logged-in '

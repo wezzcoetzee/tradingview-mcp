@@ -2,7 +2,7 @@ import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { screenshotDir, screenshotFilename } from '../src/core/capture.js';
+import { screenshotDir, screenshotFilename, captureScreenshot } from '../src/core/capture.js';
 import { jsonResult } from '../src/tools/_format.js';
 import { batchRun } from '../src/core/batch.js';
 
@@ -51,12 +51,12 @@ describe('batchRun screenshots and progress', () => {
         evaluate: async () => null,
         waitForChartReady: async () => ({ ok: true, value: undefined }),
         getChartCollection: async () => 'COL',
-        captureScreenshot: async ({ filename }: { filename: string }) => { shots.push(filename); return { file_path: `/tmp/${filename}.png` }; },
+        captureScreenshot: (async ({ filename = '' } = {}) => { shots.push(filename); return { file_path: `/tmp/${filename}.png` }; }) as unknown as typeof captureScreenshot,
       },
     });
     assert.equal(res.success, true);
     assert.equal(shots.length, 2);
-    assert.match(shots[0], /^batch_AAPL_D_/);
+    assert.match(shots[0]!, /^batch_AAPL_D_/);
     assert.deepEqual(progress, [[1, 2], [2, 2]]);
   });
 });

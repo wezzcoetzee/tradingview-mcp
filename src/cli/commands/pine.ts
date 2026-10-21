@@ -1,4 +1,4 @@
-import { register } from '../router.js';
+import { register, command } from '../router.js';
 import * as core from '../../core/pine.js';
 import { readFileSync } from 'fs';
 
@@ -17,12 +17,12 @@ async function readSource(file?: string) {
 
 register('pine', {
   description: 'Pine Script tools',
-  subcommands: new Map<string, any>([
-    ['get', {
+  subcommands: new Map([
+    ['get', command({
       description: 'Get current Pine Script source from editor',
       handler: () => core.getSource(),
-    }],
-    ['set', {
+    })],
+    ['set', command({
       description: 'Set Pine Script source (reads stdin or --file)',
       options: {
         file: { type: 'string', short: 'f', description: 'Read source from file' },
@@ -31,16 +31,16 @@ register('pine', {
         const source = await readSource(opts.file);
         return core.setSource({ source });
       },
-    }],
-    ['compile', {
+    })],
+    ['compile', command({
       description: 'Smart compile: detect button, compile, confirm, report errors and warnings',
       handler: () => core.smartCompile(),
-    }],
-    ['raw-compile', {
+    })],
+    ['raw-compile', command({
       description: 'Click compile/add button without smart detection',
       handler: () => core.compile(),
-    }],
-    ['analyze', {
+    })],
+    ['analyze', command({
       description: 'Offline static analysis (no TradingView needed)',
       options: {
         file: { type: 'string', short: 'f', description: 'Read source from file' },
@@ -49,8 +49,8 @@ register('pine', {
         const source = await readSource(opts.file);
         return core.analyze({ source });
       },
-    }],
-    ['check', {
+    })],
+    ['check', command({
       description: 'Server-side compile check (no chart needed)',
       options: {
         file: { type: 'string', short: 'f', description: 'Read source from file' },
@@ -59,12 +59,12 @@ register('pine', {
         const source = await readSource(opts.file);
         return core.check({ source });
       },
-    }],
-    ['save', {
+    })],
+    ['save', command({
       description: 'Save the current Pine Script (Cmd+S on macOS, Ctrl+S elsewhere)',
       handler: () => core.save(),
-    }],
-    ['new', {
+    })],
+    ['new', command({
       description: 'Replace the editor with a new blank Pine Script (indicator, strategy, library); refuses if a saved script is open',
       options: {
         'replace-current': { type: 'boolean', description: 'Replace the editor even if a saved script is open (a later save would overwrite it)' },
@@ -73,8 +73,8 @@ register('pine', {
         const type = (positionals[0] || 'indicator') as 'indicator' | 'strategy' | 'library';
         return core.newScript({ type, replace_current: opts['replace-current'] });
       },
-    }],
-    ['open', {
+    })],
+    ['open', command({
       description: 'Load a saved Pine Script by name into the editor; refuses if a saved script is open',
       options: {
         'replace-current': { type: 'boolean', description: 'Replace the editor even if a saved script is open (a later save would overwrite it)' },
@@ -83,18 +83,18 @@ register('pine', {
         if (!positionals[0]) throw new Error('Script name required. Usage: tv pine open "My Script"');
         return core.openScript({ name: positionals.join(' '), replace_current: opts['replace-current'] });
       },
-    }],
-    ['list', {
+    })],
+    ['list', command({
       description: 'List saved Pine Scripts',
       handler: () => core.listScripts(),
-    }],
-    ['errors', {
+    })],
+    ['errors', command({
       description: 'Get Pine Script compilation errors',
       handler: () => core.getErrors(),
-    }],
-    ['console', {
+    })],
+    ['console', command({
       description: 'Get Pine Script console/log output',
       handler: () => core.getConsole(),
-    }],
+    })],
   ]),
 });

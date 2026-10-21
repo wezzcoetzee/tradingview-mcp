@@ -1,5 +1,6 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServer } from './create-server.js';
+import { errorMessage } from './debug.js';
 
 const server = createServer();
 
@@ -11,6 +12,6 @@ const transport = new StdioServerTransport();
 try {
   await server.connect(transport);
 } catch (err) {
-  process.stderr.write(`Failed to start MCP server: ${err.message}\n`);
+  process.stderr.write(`Failed to start MCP server: ${errorMessage(err)}\n`);
   process.exit(1);
 }

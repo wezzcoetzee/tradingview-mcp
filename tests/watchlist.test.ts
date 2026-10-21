@@ -25,7 +25,7 @@ describe('get', () => {
   it('fails instead of reporting an empty watchlist when the panel is closed', async () => {
     const result = await get({ _deps: { evaluate: async () => ({ symbols: [], source: 'panel_closed' }) } });
     assert.equal(result.success, false);
-    assert.match(result.error, /panel is closed/);
+    assert.match(result.error ?? '', /panel is closed/);
     assert.deepEqual(result.symbols, []);
   });
 });

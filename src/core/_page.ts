@@ -2,7 +2,7 @@
  * Snippets and helpers shared by the core modules.
  */
 import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, KNOWN_PATHS } from '../connection.js';
-import { waitForChartReady as _waitForChartReady } from '../wait.js';
+import { waitForChartReady as _waitForChartReady, type WaitOptions } from '../wait.js';
 
 export const CHART_API = KNOWN_PATHS.chartApi;
 
@@ -15,7 +15,17 @@ export interface CoreDeps {
   evaluate?: typeof _evaluate;
   evaluateAsync?: typeof _evaluateAsync;
   waitForChartReady?: typeof _waitForChartReady;
-  waitOpts?: object;
+  waitOpts?: WaitOptions;
+}
+
+/** Param shape shared by every core function that accepts injected dependencies. */
+export interface WithDeps<D = CoreDeps> {
+  _deps?: D;
+}
+
+/** Own-property lookup, so user strings like "constructor" never resolve to inherited Object members. */
+export function own<T>(map: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(map, key) ? map[key] : undefined;
 }
 
 /** Fill in the real connection functions for any dependency a caller (usually a test) did not inject. */

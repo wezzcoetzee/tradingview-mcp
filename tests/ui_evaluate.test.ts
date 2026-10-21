@@ -16,7 +16,7 @@ function registeredUiTools() {
 }
 
 describe('ui_evaluate — env-gated', () => {
-  let prev;
+  let prev: string | undefined;
   beforeEach(() => { prev = process.env.TRADINGVIEW_MCP_ALLOW_EVAL; });
   afterEach(() => {
     if (prev === undefined) delete process.env.TRADINGVIEW_MCP_ALLOW_EVAL;

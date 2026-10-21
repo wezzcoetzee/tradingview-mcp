@@ -4,12 +4,12 @@
 import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, getReplayApi as _getReplayApi, requireFinite } from '../connection.js';
 import { waitFor } from '../wait.js';
 import type { ReportProgress } from './progress.js';
-import { sleep, UNWRAP_FN } from './_page.js';
+import { sleep, UNWRAP_FN, type CoreDeps, type WithDeps } from './_page.js';
 
 export const TRADE_ACTIONS = ['buy', 'sell', 'close'] as const;
 export const VALID_AUTOPLAY_DELAYS = [100, 143, 200, 300, 1000, 2000, 3000, 5000, 10000];
 
-function wv(path) {
+function wv(path: string) {
   return `(function(){ ${UNWRAP_FN} return unwrap(${path}); })()`;
 }
 
@@ -25,7 +25,11 @@ export function parseReplayDate(date: unknown): number {
   return requireFinite(ms, 'replay date timestamp');
 }
 
-function _resolve(deps) {
+export interface ReplayDeps extends CoreDeps {
+  getReplayApi?: typeof _getReplayApi;
+}
+
+function _resolve(deps?: ReplayDeps) {
   const evaluate = deps?.evaluate || _evaluate;
   return {
     evaluate,
@@ -35,7 +39,12 @@ function _resolve(deps) {
   };
 }
 
-export async function start({ date, _deps }: any = {}) {
+export interface StartReplayParams extends WithDeps<ReplayDeps> {
+  /** YYYY-MM-DD; omit to start from the first available date. */
+  date?: string;
+}
+
+export async function start({ date, _deps }: StartReplayParams = {}) {
   const { evaluate, evaluateAsync, getReplayApi, waitOpts } = _resolve(_deps);
   const ts = date ? parseReplayDate(date) : null;
   const rp = await getReplayApi();
@@ -74,7 +83,12 @@ export async function start({ date, _deps }: any = {}) {
   return { success: true, replay_started: true, date: date || '(first available)', current_date: currentDate };
 }
 
-export async function step({ count = 1, onProgress, _deps }: { count?: number; onProgress?: ReportProgress; _deps?: unknown } = {}) {
+export interface StepParams extends WithDeps<ReplayDeps> {
+  count?: number;
+  onProgress?: ReportProgress;
+}
+
+export async function step({ count = 1, onProgress, _deps }: StepParams = {}) {
   if (!Number.isInteger(count) || count < 1 || count > MAX_STEP_COUNT) {
     throw new Error(`Invalid step count ${count}. Use an integer from 1 to ${MAX_STEP_COUNT}.`);
   }
@@ -100,7 +114,11 @@ export async function step({ count = 1, onProgress, _deps }: { count?: number; o
   return { success: true, action: 'step', requested: count, advanced, current_date: current };
 }
 
-export async function jump({ date, _deps }: { date?: string; _deps?: unknown } = {}) {
+export interface JumpParams extends WithDeps<ReplayDeps> {
+  date?: string;
+}
+
+export async function jump({ date, _deps }: JumpParams = {}) {
   const ts = parseReplayDate(date);
   const { evaluate, evaluateAsync, getReplayApi, waitOpts } = _resolve(_deps);
   const rp = await getReplayApi();
@@ -120,7 +138,14 @@ export async function jump({ date, _deps }: { date?: string; _deps?: unknown } =
   return { success: true, action: 'jump', date, previous_date: before, current_date: value };
 }
 
-export async function autoplay({ speed, enabled, _deps }: { speed?: number; enabled?: boolean; _deps?: unknown } = {}) {
+export interface AutoplayParams extends WithDeps<ReplayDeps> {
+  /** Delay between bars in milliseconds, one of VALID_AUTOPLAY_DELAYS. */
+  speed?: number;
+  /** Explicit state; omit to flip the current one. */
+  enabled?: boolean;
+}
+
+export async function autoplay({ speed, enabled, _deps }: AutoplayParams = {}) {
   if (speed !== undefined && !(Number.isInteger(speed) && VALID_AUTOPLAY_DELAYS.includes(speed))) {
     throw new Error(`Invalid autoplay delay ${speed}. Valid values: ${VALID_AUTOPLAY_DELAYS.join(', ')}`);
   }
@@ -144,7 +169,7 @@ export async function autoplay({ speed, enabled, _deps }: { speed?: number; enab
   return { success: true, autoplay_active: target, delay_ms: delay };
 }
 
-export async function stop({ _deps }: any = {}) {
+export async function stop({ _deps }: WithDeps<ReplayDeps> = {}) {
   const { evaluate, getReplayApi, waitOpts } = _resolve(_deps);
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
@@ -157,7 +182,11 @@ export async function stop({ _deps }: any = {}) {
   return { success: true, action: 'replay_stopped' };
 }
 
-export async function trade({ action, _deps }: any = {}) {
+export interface ReplayTradeParams extends WithDeps<ReplayDeps> {
+  action: (typeof TRADE_ACTIONS)[number];
+}
+
+export async function trade({ action, _deps }: ReplayTradeParams) {
   const { evaluate, getReplayApi, waitOpts } = _resolve(_deps);
   if (!(TRADE_ACTIONS as readonly string[]).includes(action)) throw new Error('Invalid action. Use: buy, sell, or close');
   const rp = await getReplayApi();
@@ -186,10 +215,10 @@ export async function trade({ action, _deps }: any = {}) {
   if (!ok) {
     return { success: false, action, error: `Position did not settle after ${action}`, position: value?.position ?? before?.position, realized_pnl: value?.realized_pnl ?? before?.realized_pnl };
   }
-  return { success: true, action, position: value.position, realized_pnl: value.realized_pnl };
+  return { success: true, action, position: value?.position, realized_pnl: value?.realized_pnl };
 }
 
-export async function status({ _deps }: any = {}) {
+export async function status({ _deps }: WithDeps<ReplayDeps> = {}) {
   const { evaluate, getReplayApi } = _resolve(_deps);
   const rp = await getReplayApi();
   const st = await evaluate(`

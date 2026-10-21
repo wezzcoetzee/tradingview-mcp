@@ -3,7 +3,7 @@
  */
 import { safeString } from '../connection.js';
 import { parseJsonObject } from './json.js';
-import { CHART_API, resolveDeps as _resolve } from './_page.js';
+import { CHART_API, resolveDeps as _resolve, type WithDeps } from './_page.js';
 
 export interface SetInputsResult {
   success: boolean;
@@ -14,7 +14,13 @@ export interface SetInputsResult {
   unknown_keys?: string[];
 }
 
-export async function setInputs({ entity_id, inputs: inputsRaw, _deps }: any = {}): Promise<SetInputsResult> {
+export interface SetInputsParams extends WithDeps {
+  entity_id: string;
+  /** Input values by name, as an object or a JSON string. */
+  inputs?: Record<string, unknown> | string;
+}
+
+export async function setInputs({ entity_id, inputs: inputsRaw, _deps }: SetInputsParams): Promise<SetInputsResult> {
   const { evaluate } = _resolve(_deps);
   if (!entity_id) throw new Error('entity_id is required. Use chart_get_state to find study IDs.');
   const inputs = inputsRaw ? parseJsonObject(inputsRaw, 'inputs') : undefined;
@@ -86,7 +92,12 @@ export async function setInputs({ entity_id, inputs: inputsRaw, _deps }: any = {
   };
 }
 
-export async function toggleVisibility({ entity_id, visible, _deps }: any = {}) {
+export interface ToggleVisibilityParams extends WithDeps {
+  entity_id: string;
+  visible: boolean;
+}
+
+export async function toggleVisibility({ entity_id, visible, _deps }: ToggleVisibilityParams) {
   if (!entity_id) throw new Error('entity_id is required. Use chart_get_state to find study IDs.');
   if (typeof visible !== 'boolean') throw new Error('visible must be a boolean (true or false)');
 

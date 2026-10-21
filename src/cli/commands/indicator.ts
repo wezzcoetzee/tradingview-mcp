@@ -1,12 +1,12 @@
-import { register, parseBoolean } from '../router.js';
+import { register, command, parseBoolean } from '../router.js';
 import * as chartCore from '../../core/chart.js';
 import * as indCore from '../../core/indicators.js';
 import * as dataCore from '../../core/data.js';
 
 register('indicator', {
   description: 'Indicator tools (add, remove, toggle, set, get)',
-  subcommands: new Map<string, any>([
-    ['add', {
+  subcommands: new Map([
+    ['add', command({
       description: 'Add an indicator to the chart',
       options: {
         inputs: { type: 'string', short: 'i', description: 'JSON input overrides' },
@@ -15,15 +15,15 @@ register('indicator', {
         if (!positionals[0]) throw new Error('Indicator name required. Usage: tv indicator add "Volume"');
         return chartCore.manageIndicator({ action: 'add', indicator: positionals.join(' '), inputs: opts.inputs });
       },
-    }],
-    ['remove', {
+    })],
+    ['remove', command({
       description: 'Remove an indicator by entity ID',
       handler: (opts, positionals) => {
         if (!positionals[0]) throw new Error('Entity ID required. Usage: tv indicator remove eFu1Ot');
         return chartCore.manageIndicator({ action: 'remove', indicator: '', entity_id: positionals[0] });
       },
-    }],
-    ['toggle', {
+    })],
+    ['toggle', command({
       description: 'Show or hide an indicator',
       options: {
         visible: { type: 'string', description: 'Show (true) or hide (false). Default true' },
@@ -34,8 +34,8 @@ register('indicator', {
         const visible = opts.hide ? false : (parseBoolean(opts.visible, 'visible') ?? true);
         return indCore.toggleVisibility({ entity_id: positionals[0], visible });
       },
-    }],
-    ['set', {
+    })],
+    ['set', command({
       description: 'Change indicator input values',
       options: {
         inputs: { type: 'string', short: 'i', description: 'JSON input overrides, e.g. \'{"length": 50}\'' },
@@ -45,13 +45,13 @@ register('indicator', {
         if (!opts.inputs) throw new Error('Inputs required. Usage: tv indicator set eFu1Ot -i \'{"in_3": 20}\'');
         return indCore.setInputs({ entity_id: positionals[0], inputs: opts.inputs });
       },
-    }],
-    ['get', {
+    })],
+    ['get', command({
       description: 'Get indicator info and inputs',
       handler: (opts, positionals) => {
         if (!positionals[0]) throw new Error('Entity ID required. Usage: tv indicator get eFu1Ot');
         return dataCore.getIndicator({ entity_id: positionals[0] });
       },
-    }],
+    })],
   ]),
 });

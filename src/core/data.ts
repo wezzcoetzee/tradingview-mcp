@@ -2,7 +2,7 @@
  * Core data access logic.
  */
 import { evaluate, KNOWN_PATHS, safeString, requireFinite } from '../connection.js';
-import { CHART_API } from './_page.js';
+import { CHART_API, type WithDeps } from './_page.js';
 import { symbolMatches } from '../wait.js';
 
 const MAX_OHLCV_BARS = 500;
@@ -32,7 +32,7 @@ const strategyFilter = (filter?: string) => safeString((filter ?? '').toLowerCas
 const ALLOWED_GRAPHICS_COLLECTIONS = new Set(['dwglines', 'dwglabels', 'dwgboxes', 'dwgtablecells']);
 const ALLOWED_GRAPHICS_MAP_KEYS = new Set(['lines', 'labels', 'boxes', 'tableCells']);
 
-export function buildGraphicsJS(collectionName, mapKey, filter) {
+export function buildGraphicsJS(collectionName: string, mapKey: string, filter?: string) {
   if (!ALLOWED_GRAPHICS_COLLECTIONS.has(collectionName)) {
     throw new Error(`buildGraphicsJS: unsupported collectionName "${collectionName}"`);
   }
@@ -91,7 +91,15 @@ export function buildGraphicsJS(collectionName, mapKey, filter) {
   `;
 }
 
-interface GraphicsItem { id: string | number; raw: Record<string, any> }
+/** Fields TradingView keeps on a line, label, box or table cell primitive; which ones are set depends on the collection. */
+interface GraphicsRaw {
+  y1?: number; y2?: number; x1?: number; x2?: number;
+  st?: number; w?: number; ci?: number;
+  t?: string; y?: number; x?: number; yl?: string; sz?: string; tci?: number;
+  c?: number; bc?: number;
+  tid?: number; row: number; col: number;
+}
+interface GraphicsItem { id: string | number; raw: GraphicsRaw }
 interface GraphicsStudy { name: string; count: number; items: GraphicsItem[] }
 
 type Evaluate = typeof evaluate;
@@ -162,7 +170,14 @@ export function summarizeBars(bars: Bar[], chart?: { symbol: string; resolution:
   };
 }
 
-export async function getOhlcv({ count, summary, from, to, _deps }: any = {}) {
+export interface GetOhlcvParams extends WithDeps {
+  count?: number;
+  summary?: boolean;
+  from?: number;
+  to?: number;
+}
+
+export async function getOhlcv({ count, summary, from, to, _deps }: GetOhlcvParams = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const limit = Math.min(Math.max(1, Math.floor(count == null ? 100 : requireFinite(count, 'count'))), MAX_OHLCV_BARS);
   const fromTime = from == null ? -Infinity : requireFinite(from, 'from');
@@ -231,7 +246,11 @@ function resolveStudyInputs(study) {
 }
 `;
 
-export async function getIndicator({ entity_id, _deps }: any = {}) {
+export interface GetIndicatorParams extends WithDeps {
+  entity_id: string;
+}
+
+export async function getIndicator({ entity_id, _deps }: GetIndicatorParams) {
   const ev = _deps?.evaluate || evaluate;
   const data = await ev(`
     (function() {
@@ -259,7 +278,12 @@ export async function getIndicator({ entity_id, _deps }: any = {}) {
   return { success: true, entity_id, visible: data?.visible, inputs };
 }
 
-export async function getStrategyResults({ study_filter, _deps }: any = {}) {
+export interface StudyFilterParams extends WithDeps {
+  /** Case-insensitive substring of the study name. */
+  study_filter?: string;
+}
+
+export async function getStrategyResults({ study_filter, _deps }: StudyFilterParams = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const results = await ev(`
     (function() {
@@ -290,7 +314,12 @@ export async function getStrategyResults({ study_filter, _deps }: any = {}) {
   return { success: true, metric_count: Object.keys(results?.metrics || {}).length, source: results?.source, metrics: results?.metrics || {} };
 }
 
-export async function getTrades({ study_filter, max_trades, offset, _deps }: any = {}) {
+export interface GetTradesParams extends StudyFilterParams {
+  max_trades?: number;
+  offset?: number;
+}
+
+export async function getTrades({ study_filter, max_trades, offset, _deps }: GetTradesParams = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const limit = Math.max(1, Math.min(Math.floor(max_trades == null ? MAX_TRADES : requireFinite(max_trades, 'max_trades')), MAX_TRADES));
   // Without an offset, return the latest trades; with one, page forward from the oldest.
@@ -352,7 +381,12 @@ export function summarizeEquity(points: readonly { time?: number; equity?: unkno
   return { first: pts[0], last: pts[pts.length - 1], min: byEquity[0], max: byEquity[byEquity.length - 1] };
 }
 
-export async function getEquity({ study_filter, max_points, summary, _deps }: any = {}) {
+export interface GetEquityParams extends StudyFilterParams {
+  max_points?: number;
+  summary?: boolean;
+}
+
+export async function getEquity({ study_filter, max_points, summary, _deps }: GetEquityParams = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const equity = await ev(`
     (function() {
@@ -398,7 +432,11 @@ export async function getEquity({ study_filter, max_points, summary, _deps }: an
   };
 }
 
-export async function getQuote({ symbol, _deps }: any = {}) {
+export interface GetQuoteParams extends WithDeps {
+  symbol?: string;
+}
+
+export async function getQuote({ symbol, _deps }: GetQuoteParams = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const data = await ev(`
     (function() {
@@ -498,7 +536,7 @@ export async function getDepth() {
   return { success: true, bid_levels: data.bids?.length || 0, ask_levels: data.asks?.length || 0, spread: data.spread, bids: data.bids || [], asks: data.asks || [], raw_values: data.raw_values, note: data.note };
 }
 
-export async function getStudyValues({ _deps }: any = {}) {
+export async function getStudyValues({ _deps }: WithDeps = {}) {
   const ev: Evaluate = _deps?.evaluate || evaluate;
   const data = await ev(`
     (function() {
@@ -540,18 +578,29 @@ export async function getStudyValues({ _deps }: any = {}) {
   return { success: true, study_count: data?.length || 0, studies: data || [] };
 }
 
-export async function getPineLines({ study_filter, verbose, max_levels, _deps }: any = {}) {
+export interface PineLevelsParams extends StudyFilterParams {
+  verbose?: boolean;
+  max_levels?: number;
+}
+
+export async function getPineLines({ study_filter, verbose, max_levels, _deps }: PineLevelsParams = {}) {
   const { studies: raw, notes } = await readGraphics('dwglines', 'lines', study_filter, _deps?.evaluate);
   const studies = raw.map(s => {
     const horizontal_levels = horizontalLevels(s.items, max_levels ?? MAX_LEVELS);
-    const result: any = { name: s.name, total_lines: s.count, horizontal_levels };
-    if (verbose) result.all_lines = s.items.slice(-(max_levels ?? MAX_LEVELS)).map(({ id, raw: v }) => ({ id, y1: v.y1 ?? null, y2: v.y2 ?? null, x1: v.x1, x2: v.x2, horizontal: v.y1 === v.y2, style: v.st, width: v.w, color: v.ci }));
-    return result;
+    const all_lines = verbose
+      ? s.items.slice(-(max_levels ?? MAX_LEVELS)).map(({ id, raw: v }) => ({ id, y1: v.y1 ?? null, y2: v.y2 ?? null, x1: v.x1, x2: v.x2, horizontal: v.y1 === v.y2, style: v.st, width: v.w, color: v.ci }))
+      : undefined;
+    return { name: s.name, total_lines: s.count, horizontal_levels, ...(all_lines && { all_lines }) };
   });
   return { success: true, study_count: studies.length, studies, ...notes };
 }
 
-export async function getPineLabels({ study_filter, max_labels, verbose, _deps }: any = {}) {
+export interface GetPineLabelsParams extends StudyFilterParams {
+  max_labels?: number;
+  verbose?: boolean;
+}
+
+export async function getPineLabels({ study_filter, max_labels, verbose, _deps }: GetPineLabelsParams = {}) {
   const { studies: raw, notes } = await readGraphics('dwglabels', 'labels', study_filter, _deps?.evaluate);
   const limit = Math.max(0, max_labels ?? 50);
   const studies = raw.map(s => {
@@ -567,7 +616,7 @@ export async function getPineLabels({ study_filter, max_labels, verbose, _deps }
   return { success: true, study_count: studies.length, studies, ...notes };
 }
 
-export async function getPineTables({ study_filter, _deps }: any = {}) {
+export async function getPineTables({ study_filter, _deps }: StudyFilterParams = {}) {
   const { studies: raw, notes } = await readGraphics('dwgtablecells', 'tableCells', study_filter, _deps?.evaluate);
   const studies = raw.map(s => ({ name: s.name, tables: tableRows(s.items) }));
   return { success: true, study_count: studies.length, studies, ...notes };
@@ -587,18 +636,17 @@ export function boxZones(items: GraphicsItem[], maxZones = MAX_LEVELS): { high: 
   return zones.sort((a, b) => b.high - a.high);
 }
 
-export async function getPineBoxes({ study_filter, verbose, max_levels, _deps }: any = {}) {
+export async function getPineBoxes({ study_filter, verbose, max_levels, _deps }: PineLevelsParams = {}) {
   const { studies: raw, notes } = await readGraphics('dwgboxes', 'boxes', study_filter, _deps?.evaluate);
   const limit = Math.max(0, max_levels ?? MAX_LEVELS);
   const studies = raw.map(s => {
-    const result: any = { name: s.name, total_boxes: s.count, zones: boxZones(s.items, limit) };
-    if (verbose) {
-      result.all_boxes = s.items.slice(-limit).map(({ id, raw: v }) => {
+    const all_boxes = verbose
+      ? s.items.slice(-limit).map(({ id, raw: v }) => {
         const bounded = v.y1 != null && v.y2 != null;
-        return { id, high: bounded ? Math.max(v.y1, v.y2) : null, low: bounded ? Math.min(v.y1, v.y2) : null, x1: v.x1, x2: v.x2, borderColor: v.c, bgColor: v.bc };
-      });
-    }
-    return result;
+        return { id, high: bounded ? Math.max(v.y1!, v.y2!) : null, low: bounded ? Math.min(v.y1!, v.y2!) : null, x1: v.x1, x2: v.x2, borderColor: v.c, bgColor: v.bc };
+      })
+      : undefined;
+    return { name: s.name, total_boxes: s.count, zones: boxZones(s.items, limit), ...(all_boxes && { all_boxes }) };
   });
   return { success: true, study_count: studies.length, studies, ...notes };
 }

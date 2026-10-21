@@ -6,7 +6,8 @@ import { waitForChartReady as _waitForChartReady } from '../wait.js';
 import { getOhlcv } from './data.js';
 import { captureScreenshot as _captureScreenshot } from './capture.js';
 import type { ReportProgress } from './progress.js';
-import { sleep } from './_page.js';
+import { sleep, type CoreDeps, type WithDeps } from './_page.js';
+import { errorMessage } from '../debug.js';
 
 export const BATCH_ACTIONS = ['screenshot', 'get_ohlcv', 'get_strategy_results'] as const;
 export type BatchAction = (typeof BATCH_ACTIONS)[number];
@@ -16,7 +17,23 @@ const CHART_STATE = `(function() {
   return { symbol: chart.symbol(), resolution: chart.resolution() };
 })()`;
 
-export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_count, onProgress, _deps }: any = {}) {
+export interface BatchDeps extends CoreDeps {
+  getChartApi?: typeof _getChartApi;
+  getChartCollection?: typeof _getChartCollection;
+  captureScreenshot?: typeof _captureScreenshot;
+}
+
+export interface BatchRunParams extends WithDeps<BatchDeps> {
+  symbols: string[];
+  timeframes?: string[];
+  action: BatchAction;
+  /** Delay after each chart change, in milliseconds. */
+  delay_ms?: number;
+  ohlcv_count?: number;
+  onProgress?: ReportProgress;
+}
+
+export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_count, onProgress, _deps }: BatchRunParams) {
   if (!BATCH_ACTIONS.includes(action)) {
     throw new Error(`Unknown batch action "${action}". Use one of: ${BATCH_ACTIONS.join(', ')}`);
   }
@@ -57,7 +74,7 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
           if (action === 'screenshot') {
             const ts = new Date().toISOString().replace(/[:.]/g, '-');
             const shot = await (_deps?.captureScreenshot || _captureScreenshot)({ filename: `batch_${symbol}_${tf || 'default'}_${ts}` });
-            actionResult = { file_path: shot.file_path };
+            actionResult = { file_path: 'file_path' in shot ? shot.file_path : undefined };
           } else if (action === 'get_ohlcv') {
             actionResult = await getOhlcv({ count: ohlcv_count, summary: true, _deps: { evaluate } });
           } else {
@@ -80,7 +97,7 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
           if (actionResult?.error) results.push({ ...combo, success: false, error: actionResult.error });
           else results.push({ ...combo, success: true, result: actionResult });
         } catch (err) {
-          results.push({ ...combo, success: false, error: err.message });
+          results.push({ ...combo, success: false, error: errorMessage(err) });
         }
         await progress?.(results.length, total);
       }

@@ -11,6 +11,9 @@ import { backoffMs, sleep, pollLoop } from '../src/core/stream.js';
 const mock = (value: unknown) => ({ evaluate: async () => value });
 const graphics = (studies: unknown[], available = ['Alpha Levels']) => mock({ studies, available });
 
+type GraphicsItem = Parameters<typeof horizontalLevels>[0][number];
+const graphicsItem = (id: string | number, y1: number, y2: number): GraphicsItem => ({ id, raw: { y1, y2, row: 0, col: 0 } });
+
 describe('getQuote', () => {
   const quote = { symbol: 'NASDAQ:AAPL', close: 10, last: 10 };
 
@@ -89,7 +92,7 @@ describe('pine graphics readers', () => {
   });
 
   it('horizontalLevels handles price 0, skips sloped lines, and caps newest-first', () => {
-    const line = (y1: number, y2: number) => ({ id: y1, raw: { y1, y2 } });
+    const line = (y1: number, y2: number) => graphicsItem(y1, y1, y2);
     assert.deepEqual(horizontalLevels([line(0, 0), line(5, 6), line(3, 3)]), [3, 0]);
     assert.deepEqual(horizontalLevels([line(1, 1), line(2, 2), line(3, 3)], 2), [3, 2]);
   });
@@ -115,7 +118,7 @@ describe('batchRun', () => {
 
   it('rejects an unknown action before touching the chart', async () => {
     const { deps, calls } = baseDeps();
-    await assert.rejects(batchRun({ symbols: ['AAPL'], action: 'bogus', _deps: deps }), /Unknown batch action/);
+    await assert.rejects(batchRun({ symbols: ['AAPL'], action: 'bogus' as unknown as 'screenshot', _deps: deps }), /Unknown batch action/);
     assert.equal(calls.length, 0);
   });
 
@@ -133,7 +136,9 @@ describe('batchRun', () => {
     const res = await batchRun({ symbols: ['AAPL'], action: 'get_ohlcv', delay_ms: 0, _deps: deps });
     assert.equal(res.success, false);
     assert.equal(res.failed, 1);
-    assert.match(res.results[0].error, /did not reach AAPL/);
+    const first = res.results[0];
+    assert.ok(first && 'error' in first);
+    assert.match(first.error ?? '', /did not reach AAPL/);
   });
 
   it('counts an action-level error as a failure', async () => {
@@ -142,7 +147,9 @@ describe('batchRun', () => {
     });
     const res = await batchRun({ symbols: ['AAPL'], action: 'get_strategy_results', delay_ms: 0, _deps: deps });
     assert.equal(res.success, false);
-    assert.equal(res.results[0].error, 'Strategy Tester not found');
+    const first = res.results[0];
+    assert.ok(first && 'error' in first);
+    assert.equal(first.error, 'Strategy Tester not found');
   });
 });
 
@@ -193,25 +200,25 @@ describe('size controls', () => {
     assert.equal(capped.data_points, 1000);
     assert.equal(capped.showing, 25);
     assert.equal(capped.data.length, 25);
-    assert.equal((await getEquity({ _deps })).data.length, 200);
+    assert.equal((await getEquity({ _deps })).data?.length, 200);
     const only = await getEquity({ summary: true, _deps });
     assert.deepEqual(only.data, []);
     assert.equal(only.summary?.max.equity, 106);
   });
 
   it('boxZones dedupes, keeps the newest, caps, and sorts high to low', () => {
-    const box = (y1: number, y2: number) => ({ id: `${y1}-${y2}`, raw: { y1, y2 } });
+    const box = (y1: number, y2: number) => graphicsItem(`${y1}-${y2}`, y1, y2);
     const items = [box(1, 2), box(5, 4), box(3, 3.5), box(2, 1), box(8, 9)];
     assert.deepEqual(boxZones(items), [{ high: 9, low: 8 }, { high: 5, low: 4 }, { high: 3.5, low: 3 }, { high: 2, low: 1 }]);
     assert.deepEqual(boxZones(items, 2), [{ high: 9, low: 8 }, { high: 2, low: 1 }]);
   });
 
   it('getPineBoxes applies max_levels to zones and verbose boxes', async () => {
-    const items = [1, 2, 3, 4].map(n => ({ id: n, raw: { y1: n, y2: n + 0.5 } }));
+    const items = [1, 2, 3, 4].map(n => graphicsItem(n, n, n + 0.5));
     const _deps = graphics([{ name: 'Alpha Levels', count: 4, items }]);
     const res = await getPineBoxes({ max_levels: 2, verbose: true, _deps });
-    assert.equal(res.studies[0].zones.length, 2);
-    assert.equal(res.studies[0].all_boxes.length, 2);
+    assert.equal(res.studies[0]!.zones.length, 2);
+    assert.equal(res.studies[0]!.all_boxes?.length, 2);
   });
 });
 

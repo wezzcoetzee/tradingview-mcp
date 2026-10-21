@@ -18,8 +18,8 @@ import assert from 'node:assert/strict';
 import { setInputs } from '../src/core/indicators.js';
 import { getIndicator } from '../src/core/data.js';
 
-function makeEvaluate(impl) {
-  return async (_expr) => impl(_expr);
+function makeEvaluate(impl: (expr: string) => unknown) {
+  return async (expr: string) => impl(expr);
 }
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ function makeEvaluate(impl) {
 
 describe('setInputs — Path A (Pine-script studies)', () => {
   it('applies overrides via setInputValues when getInputValues returns descriptors', async () => {
-    let capturedExpr;
+    let capturedExpr = '';
     const evaluate = makeEvaluate((expr) => {
       capturedExpr = expr;
       return { updated_inputs: { length: 50 }, available_inputs: ['length', 'source'] };
@@ -43,7 +43,7 @@ describe('setInputs — Path A (Pine-script studies)', () => {
 
   it('throws when entity_id is missing', async () => {
     await assert.rejects(
-      () => setInputs({ inputs: { length: 50 } }),
+      () => setInputs({ inputs: { length: 50 } } as unknown as Parameters<typeof setInputs>[0]),
       /entity_id is required/,
     );
   });
@@ -87,7 +87,7 @@ describe('setInputs — Path B (built-in studies with property tree)', () => {
     const result = await setInputs({ entity_id: 'builtin2', inputs: { typo_key: 99 }, _deps: { evaluate } });
 
     assert.equal(result.success, false);
-    assert.match(result.error, /No inputs were updated/);
+    assert.match(result.error ?? '', /No inputs were updated/);
     assert.deepEqual(result.unknown_keys, ['typo_key']);
     assert.ok(Array.isArray(result.available_inputs), 'available_inputs should be an array');
     assert.ok(result.available_inputs.includes('length'), 'should list discovered keys for debugging');
@@ -123,7 +123,7 @@ describe('setInputs — neither path produces descriptors', () => {
 describe('setInputs — injected expression contract', () => {
   it('uses widget.getStudyById and writes via _study.properties().childs().inputs.childs()', async () => {
     let capturedExpr = '';
-    const evaluate = (expr) => {
+    const evaluate = (expr: string) => {
       capturedExpr = expr;
       return Promise.resolve({ updated_inputs: { length: 50 }, available_inputs: ['length', 'source'] });
     };
