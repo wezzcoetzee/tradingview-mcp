@@ -5,7 +5,7 @@
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { start, step, autoplay, stop, trade, status, VALID_AUTOPLAY_DELAYS } from '../src/core/replay.js';
+import { start, step, jump, autoplay, stop, trade, status, parseReplayDate, VALID_AUTOPLAY_DELAYS, MAX_STEP_COUNT } from '../src/core/replay.js';
 
 // ── Mock helpers ─────────────────────────────────────────────────────────
 
@@ -39,6 +39,24 @@ function mockGetReplayApi() {
 function mockDeps(responses: any = {}, sequence?: any) {
   const evaluate = mockEvaluate(responses, sequence);
   return { _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST }, evaluate };
+}
+
+/** Replay page whose toggles and steps take effect, so verification can pass. */
+function livePage({ started = true, autoplayOn = false, date = 1000, stepsMove = true, stops = true, jumpTo = 5000 } = {}) {
+  const state = { started, autoplayOn, date, delay: 1000, stepCalls: 0 };
+  const evaluate = async (expr: string) => {
+    if (expr.includes('doStep')) { state.stepCalls++; if (stepsMove) state.date += 1; return undefined; }
+    if (expr.includes('toggleAutoplay')) { state.autoplayOn = !state.autoplayOn; return undefined; }
+    if (expr.includes('changeAutoplayDelay')) { state.delay = Number(/\((\d+)\)/.exec(expr)![1]); return undefined; }
+    if (expr.includes('stopReplay')) { if (stops) state.started = false; return undefined; }
+    if (expr.includes('selectDate')) { state.date = jumpTo; return 'ok'; }
+    if (expr.includes('isReplayStarted')) return state.started;
+    if (expr.includes('isAutoplayStarted')) return state.autoplayOn;
+    if (expr.includes('autoplayDelay')) return state.delay;
+    if (expr.includes('currentDate')) return state.date;
+    return undefined;
+  };
+  return { state, _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } };
 }
 
 // ── start() ──────────────────────────────────────────────────────────────
@@ -78,16 +96,12 @@ describe('start() — date selection and polling', () => {
     assert.ok(firstAvail, 'selectFirstAvailableDate was called');
   });
 
-  it('throws on invalid date string', async () => {
-    const { _deps } = mockDeps({ 'isReplayAvailable': true, 'showReplayToolbar': undefined });
-    await assert.rejects(
-      () => start({ date: 'not-a-date', _deps }),
-      (err) => {
-        assert.ok((err as any).message.includes('Invalid date'));
-        assert.ok((err as any).message.includes('not-a-date'));
-        return true;
-      },
-    );
+  it('rejects an invalid date before any page call', async () => {
+    for (const bad of ['not-a-date', '2026-02-31', '2026-3-5', '2026-03-15T10:00', '03/15/2026']) {
+      const { _deps, evaluate } = mockDeps({ 'isReplayAvailable': true });
+      await assert.rejects(() => start({ date: bad, _deps }), /Invalid date/);
+      assert.equal(evaluate.calls.length, 0, `no page calls for "${bad}"`);
+    }
   });
 
   it('throws when replay not available', async () => {
@@ -152,39 +166,40 @@ describe('start() — date selection and polling', () => {
 // ── step() ───────────────────────────────────────────────────────────────
 
 describe('step() — doStep and polling', () => {
-  it('calls doStep and polls until currentDate changes', async () => {
-    let stepDone = false;
-    let dateReadCount = 0;
-    const evaluate = async (expr) => {
-      if (expr.includes('isReplayStarted')) return true;
-      if (expr.includes('currentDate')) {
-        dateReadCount++;
-        // First read (before) returns 1000, then after doStep: 1000 twice, then 2000
-        if (!stepDone) return 1000;
-        return dateReadCount >= 4 ? 2000 : 1000;
-      }
-      if (expr.includes('doStep')) { stepDone = true; return undefined; }
-      return undefined;
-    };
-    evaluate.calls = [];
-    const result = await step({ _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } });
+  it('advances one bar by default', async () => {
+    const { _deps, state } = livePage();
+    const result = await step({ _deps });
     assert.equal(result.success, true);
-    assert.equal(result.current_date, 2000);
     assert.equal(result.action, 'step');
+    assert.equal(result.advanced, 1);
+    assert.equal(result.current_date, 1001);
+    assert.equal(state.stepCalls, 1);
+  });
+
+  it('advances count bars and reports advanced', async () => {
+    const { _deps, state } = livePage();
+    const result = await step({ count: 5, _deps });
+    assert.equal(result.success, true);
+    assert.equal(result.advanced, 5);
+    assert.equal(result.current_date, 1005);
+    assert.equal(state.stepCalls, 5);
   });
 
   it('fails if the date never advances', async () => {
-    const evaluate = async (expr) => {
-      if (expr.includes('isReplayStarted')) return true;
-      if (expr.includes('currentDate')) return 5000; // never changes
-      if (expr.includes('doStep')) return undefined;
-      return undefined;
-    };
-    evaluate.calls = [];
-    const result = await step({ _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } });
+    const { _deps } = livePage({ stepsMove: false });
+    const result = await step({ count: 3, _deps });
     assert.equal(result.success, false);
     assert.match(result.error, /did not advance/);
-    assert.equal(result.current_date, 5000);
+    assert.equal(result.advanced, 0);
+    assert.equal(result.current_date, 1000);
+  });
+
+  it('rejects counts outside 1..max before any page call', async () => {
+    for (const count of [0, -1, 1.5, MAX_STEP_COUNT + 1]) {
+      const { _deps, evaluate } = mockDeps({});
+      await assert.rejects(() => step({ count, _deps }), /Invalid step count/);
+      assert.equal(evaluate.calls.length, 0);
+    }
   });
 
   it('throws when replay not started', async () => {
@@ -196,20 +211,65 @@ describe('step() — doStep and polling', () => {
   });
 });
 
+// ── jump() ───────────────────────────────────────────────────────────────
+
+describe('jump()', () => {
+  it('selects the date while replay runs and reports the new position', async () => {
+    const { _deps } = livePage();
+    const result = await jump({ date: '2026-03-15', _deps });
+    assert.equal(result.success, true);
+    assert.equal(result.previous_date, 1000);
+    assert.equal(result.current_date, 5000);
+  });
+
+  it('fails when the replay date does not change to another day', async () => {
+    const { _deps, state } = livePage({ date: 5000, jumpTo: 5000 });
+    const result = await jump({ date: '2026-03-15', _deps });
+    assert.equal(result.success, false);
+    assert.equal(state.date, 5000);
+  });
+
+  it('succeeds when the replay is already on the requested day', async () => {
+    const sameDay = Date.UTC(2026, 2, 15, 13) / 1000;
+    const { _deps } = livePage({ date: sameDay, jumpTo: sameDay });
+    const result = await jump({ date: '2026-03-15', _deps });
+    assert.equal(result.success, true);
+    assert.equal(result.unchanged, true);
+    assert.equal(result.current_date, sameDay);
+  });
+
+  it('rejects a bad date before any page call', async () => {
+    const { _deps, evaluate } = mockDeps({});
+    await assert.rejects(() => jump({ date: '2026-13-01', _deps }), /Invalid date/);
+    assert.equal(evaluate.calls.length, 0);
+  });
+
+  it('throws when replay not started', async () => {
+    const { _deps } = livePage({ started: false });
+    await assert.rejects(() => jump({ date: '2026-03-15', _deps }), /not started/);
+  });
+});
+
+describe('parseReplayDate()', () => {
+  it('returns UTC midnight in ms', () => {
+    assert.equal(parseReplayDate('2026-03-15'), Date.UTC(2026, 2, 15));
+  });
+  it('rejects non YYYY-MM-DD and impossible dates', () => {
+    for (const bad of ['', 'abc', '2026-02-30', '2026-3-15', '2026-03-15 ', '20260315']) {
+      assert.throws(() => parseReplayDate(bad), /Invalid date/, bad);
+    }
+  });
+});
+
 // ── autoplay() ───────────────────────────────────────────────────────────
 
 describe('autoplay() — delay validation', () => {
   for (const delay of VALID_AUTOPLAY_DELAYS) {
     it(`accepts valid delay ${delay}ms`, async () => {
-      const { _deps } = mockDeps({
-        'isReplayStarted': true,
-        'changeAutoplayDelay': undefined,
-        'toggleAutoplay': undefined,
-        'isAutoplayStarted': true,
-        'autoplayDelay': delay,
-      });
+      const { _deps } = livePage();
       const result = await autoplay({ speed: delay, _deps });
       assert.equal(result.success, true);
+      assert.equal(result.autoplay_active, true);
       assert.equal(result.delay_ms, delay);
     });
   }
@@ -231,17 +291,31 @@ describe('autoplay() — delay validation', () => {
     });
   }
 
-  it('toggles without changing speed when speed omitted', async () => {
-    const { _deps, evaluate } = mockDeps({
-      'isReplayStarted': true,
-      'toggleAutoplay': undefined,
-      'isAutoplayStarted': false,
-      'autoplayDelay': 300,
-    });
+  it('flips autoplay without changing speed when enabled and speed are omitted', async () => {
+    const { _deps, state } = livePage({ autoplayOn: true });
     const result = await autoplay({ _deps });
     assert.equal(result.autoplay_active, false);
-    const changeCall = evaluate.calls.find(c => c.includes('changeAutoplayDelay'));
-    assert.equal(changeCall, undefined, 'changeAutoplayDelay not called when speed omitted');
+    assert.equal(state.delay, 1000, 'speed untouched');
+  });
+
+  it('enabled sets an explicit state and never toggles when already there', async () => {
+    const on = livePage({ autoplayOn: true });
+    assert.equal((await autoplay({ enabled: true, _deps: on._deps })).autoplay_active, true);
+    assert.equal(on.state.autoplayOn, true, 'a second enabled:true must not stop autoplay');
+    const off = livePage({ autoplayOn: true });
+    assert.equal((await autoplay({ enabled: false, _deps: off._deps })).autoplay_active, false);
+    assert.equal(off.state.autoplayOn, false);
+  });
+
+  it('fails when autoplay does not reach the requested state', async () => {
+    const evaluate = async (expr: string) => {
+      if (expr.includes('isReplayStarted')) return true;
+      if (expr.includes('isAutoplayStarted')) return false;
+      return undefined;
+    };
+    const result = await autoplay({ enabled: true, _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } });
+    assert.equal(result.success, false);
+    assert.match(result.error, /did not turn on/);
   });
 
   it('throws when replay not started', async () => {
@@ -256,16 +330,19 @@ describe('autoplay() — delay validation', () => {
 // ── stop() ───────────────────────────────────────────────────────────────
 
 describe('stop()', () => {
-  it('calls stopReplay when started', async () => {
-    const { _deps, evaluate } = mockDeps({
-      'isReplayStarted': true,
-      'stopReplay': undefined,
-    });
+  it('calls stopReplay and confirms replay ended', async () => {
+    const { _deps, state } = livePage();
     const result = await stop({ _deps });
     assert.equal(result.success, true);
     assert.equal(result.action, 'replay_stopped');
-    const stopCall = evaluate.calls.find(c => c.includes('stopReplay'));
-    assert.ok(stopCall, 'stopReplay was called');
+    assert.equal(state.started, false);
+  });
+
+  it('fails when replay is still running after stopReplay', async () => {
+    const { _deps } = livePage({ stops: false });
+    const result = await stop({ _deps });
+    assert.equal(result.success, false);
+    assert.match(result.error, /still running/);
   });
 
   it('returns already_stopped when not started', async () => {

@@ -181,3 +181,61 @@ describe('removeOne() — truthful result', () => {
     assert.equal(result.removed, false);
   });
 });
+
+describe('drawShape() points and lock', () => {
+  function drawDeps(locked = true) {
+    const calls: string[] = [];
+    let created = false;
+    const evaluate = async (expr: string) => {
+      calls.push(expr);
+      if (expr.includes('createShape') || expr.includes('createMultipointShape')) { created = true; return undefined; }
+      if (expr.includes('isLocked')) return locked;
+      if (expr.includes('getAllShapes')) return created ? ['old', 'new1'] : ['old'];
+      return undefined;
+    };
+    return { calls, _deps: { evaluate, getChartApi: async () => 'window.__api', waitOpts: { timeout: 50, interval: 5 } } };
+  }
+  const p = (time: number, price: number) => ({ time, price });
+
+  it('passes three points to createMultipointShape in order', async () => {
+    const { _deps, calls } = drawDeps();
+    const res = await drawShape({ shape: 'parallel_channel', point: p(1, 10), point2: p(2, 20), more_points: [p(3, 15)], _deps });
+    assert.equal(res.success, true);
+    const create = calls.find(c => c.includes('createMultipointShape'))!;
+    assert.ok(create.includes('[{"time":1,"price":10},{"time":2,"price":20},{"time":3,"price":15}]'));
+  });
+
+  it('rejects more_points without point2 and non-finite extra points', async () => {
+    const { _deps } = drawDeps();
+    await assert.rejects(drawShape({ shape: 'x', point: p(1, 1), more_points: [p(2, 2)], _deps }), /needs point2/);
+    await assert.rejects(drawShape({ shape: 'x', point: p(1, 1), point2: p(2, 2), more_points: [{ time: 3, price: NaN }], _deps }), /more_points\[0\]\.price/);
+  });
+
+  it('lock is sent to the chart and verified by reading it back', async () => {
+    const ok = drawDeps(true);
+    const res = await drawShape({ shape: 'trend_line', point: p(1, 1), point2: p(2, 2), lock: true, _deps: ok._deps });
+    assert.equal(res.success, true);
+    assert.equal(res.locked, true);
+    assert.ok(ok.calls.find(c => c.includes('createMultipointShape'))!.includes('lock: true'));
+    const bad = await drawShape({ shape: 'trend_line', point: p(1, 1), lock: true, _deps: drawDeps(false)._deps });
+    assert.equal(bad.success, false);
+    assert.match(bad.error, /not locked/);
+  });
+});
+
+describe('draw_list points and draw_get_properties verbose', () => {
+  it('draw_list asks for each shape\'s points', async () => {
+    const { _deps, calls } = makeDeps(() => []);
+    await listDrawings({ _deps });
+    assert.ok(calls[0].includes('getPoints()'));
+  });
+
+  it('available_methods are only collected when verbose', async () => {
+    const quiet = makeDeps(() => ({ entity_id: 'a' }));
+    await getProperties({ entity_id: 'a', _deps: quiet._deps });
+    assert.ok(!quiet.calls[0].includes('available_methods'));
+    const loud = makeDeps(() => ({ entity_id: 'a' }));
+    await getProperties({ entity_id: 'a', verbose: true, _deps: loud._deps });
+    assert.ok(loud.calls[0].includes('available_methods'));
+  });
+});

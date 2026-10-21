@@ -288,7 +288,26 @@ export async function check({ source, fetchFn = fetch }: { source: string; fetch
 
 // ── Functions requiring TradingView connection ──
 
-export async function getSource() {
+export interface SourceSlice { source: string; from_line: number; to_line: number; truncated: boolean }
+
+/** Lines `from_line`..`to_line` (1-based, inclusive) of `source`, cut to `max_chars` when set. */
+export function sliceSource(source: string, { from_line, to_line, max_chars }: { from_line?: number; to_line?: number; max_chars?: number } = {}): SourceSlice & { total_lines: number } {
+  const lines = source.split('\n');
+  const from = Math.max(1, Math.floor(from_line ?? 1));
+  const to = Math.min(lines.length, Math.floor(to_line ?? lines.length));
+  if (from > to) throw new Error(`from_line (${from}) must not be after to_line (${to}); the script has ${lines.length} lines`);
+  const full = lines.slice(from - 1, to).join('\n');
+  if (max_chars === undefined || full.length <= max_chars) {
+    return { source: full, from_line: from, to_line: to, truncated: false, total_lines: lines.length };
+  }
+  const text = full.slice(0, Math.max(0, Math.floor(max_chars)));
+  // to_line is the last line shown whole; a cut through a line leaves a partial last line that is not counted.
+  const cutMidLine = full[text.length] !== '\n';
+  const shown = text === '' ? 0 : text.split('\n').length;
+  return { source: text, from_line: from, to_line: from + (cutMidLine ? shown - 1 : shown) - 1, truncated: true, total_lines: lines.length };
+}
+
+export async function getSource({ from_line, to_line, max_chars }: { from_line?: number; to_line?: number; max_chars?: number } = {}) {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor or Monaco not found in React fiber tree.');
 
@@ -304,7 +323,7 @@ export async function getSource() {
     throw new Error('Monaco editor found but getValue() returned null.');
   }
 
-  return { success: true, source, line_count: source.split('\n').length, char_count: source.length };
+  return { success: true, ...sliceSource(source, { from_line, to_line, max_chars }), char_count: source.length };
 }
 
 /** Title of the script in the editor (from its declaration), or null if undeclared. */
@@ -516,19 +535,28 @@ export async function save() {
   return { success: true, script_name, action: dialogHandled ? 'saved_with_dialog' : 'saved' };
 }
 
-export async function getConsole() {
+export interface ConsoleEntry { timestamp: string | null; type: string; message: string }
+
+const DEFAULT_CONSOLE_LIMIT = 50;
+
+/** Keep the newest `limit` entries. Parent/child duplicates are removed in the page, so repeated log lines stay. */
+export function trimConsole(entries: readonly ConsoleEntry[], limit = DEFAULT_CONSOLE_LIMIT) {
+  return { entries: limit > 0 ? entries.slice(-limit) : [], total: entries.length };
+}
+
+export async function getConsole({ limit }: { limit?: number } = {}) {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
   const entries = await evaluate(`
     (function() {
       var results = [];
-      var rows = document.querySelectorAll('[class*="consoleRow"], [class*="log-"], [class*="consoleLine"]');
+      var rows = Array.from(document.querySelectorAll('[class*="consoleRow"], [class*="log-"], [class*="consoleLine"]'));
       if (rows.length === 0) {
         var bottomArea = document.querySelector('[class*="layout__area--bottom"]')
           || document.querySelector('[class*="bottom-widgetbar-content"]');
         if (bottomArea) {
-          rows = bottomArea.querySelectorAll('[class*="message"], [class*="log"], [class*="console"]');
+          rows = Array.from(bottomArea.querySelectorAll('[class*="message"], [class*="log"], [class*="console"]'));
         }
       }
       if (rows.length === 0) {
@@ -540,12 +568,17 @@ export async function getConsole() {
           for (var s = 0; s < allSpans.length; s++) {
             var txt = allSpans[s].textContent.trim();
             if (/^\\d{2}:\\d{2}:\\d{2}/.test(txt) || /error|warning|info/i.test(allSpans[s].className)) {
-              rows = Array.from(rows || []);
               rows.push(allSpans[s]);
             }
           }
         }
       }
+      // Matched selectors nest (a row and its children); keep only the innermost nodes.
+      var ancestors = new Set();
+      for (var a = 0; a < rows.length; a++) {
+        for (var p = rows[a].parentElement; p && !ancestors.has(p); p = p.parentElement) ancestors.add(p);
+      }
+      rows = rows.filter(function(r) { return !ancestors.has(r); });
       for (var i = 0; i < rows.length; i++) {
         var text = rows[i].textContent.trim();
         if (!text) continue;
@@ -563,7 +596,8 @@ export async function getConsole() {
     })()
   `);
 
-  return { success: true, entries: entries || [], entry_count: entries?.length || 0 };
+  const trimmed = trimConsole(entries || [], limit ?? DEFAULT_CONSOLE_LIMIT);
+  return { success: true, entries: trimmed.entries, entry_count: trimmed.entries.length, total_entries: trimmed.total };
 }
 
 export async function smartCompile() {

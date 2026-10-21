@@ -3,11 +3,18 @@
  */
 import { getClient, evaluate, getChartCollection } from '../connection.js';
 import { writeFileSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCREENSHOT_DIR = join(dirname(dirname(__dirname)), 'screenshots');
+export const CAPTURE_REGIONS = ['full', 'chart', 'strategy_tester'] as const;
+export const CAPTURE_METHODS = ['cdp', 'api'] as const;
+export type CaptureRegion = (typeof CAPTURE_REGIONS)[number];
+export type CaptureMethod = (typeof CAPTURE_METHODS)[number];
+
+/** Where screenshots are written: TV_MCP_SCREENSHOT_DIR, else a folder in the OS temp dir. */
+export function screenshotDir(): string {
+  return process.env.TV_MCP_SCREENSHOT_DIR || join(tmpdir(), 'tradingview-mcp-screenshots');
+}
 
 export function sanitizeFilename(name) {
   let s = String(name).replace(/[^\w.-]/g, '_').slice(0, 80);
@@ -15,12 +22,24 @@ export function sanitizeFilename(name) {
   return s;
 }
 
-export async function captureScreenshot({ region, filename, method }: any = {}) {
-  mkdirSync(SCREENSHOT_DIR, { recursive: true });
+/** File name with a single .png extension, whether or not the caller included one. */
+export function screenshotFilename(filename: string | undefined, region: CaptureRegion, now = new Date()): string {
+  const base = filename?.replace(/\.png$/i, '') || `tv_${region}_${now.toISOString().replace(/[:.]/g, '-')}`;
+  return `${sanitizeFilename(base)}.png`;
+}
 
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const fname = sanitizeFilename(filename || `tv_${region}_${ts}`);
-  const filePath = join(SCREENSHOT_DIR, `${fname}.png`);
+interface CaptureOptions {
+  region?: CaptureRegion;
+  filename?: string;
+  method?: CaptureMethod;
+  /** Also return the PNG as base64 (image_base64) for clients that cannot read the saved file. */
+  inline?: boolean;
+}
+
+export async function captureScreenshot({ region = 'full', filename, method, inline }: CaptureOptions = {}) {
+  const dir = screenshotDir();
+  mkdirSync(dir, { recursive: true });
+  const filePath = join(dir, screenshotFilename(filename, region));
 
   if (method === 'api') {
     try {
@@ -37,6 +56,7 @@ export async function captureScreenshot({ region, filename, method }: any = {}) 
 
   const client = await getClient();
   let clip = undefined;
+  let captured: CaptureRegion = region;
 
   if (region === 'chart') {
     const bounds = await evaluate(`
@@ -63,14 +83,17 @@ export async function captureScreenshot({ region, filename, method }: any = {}) 
     if (bounds) clip = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, scale: 1 };
   }
 
-  const params: any = { format: 'png' };
-  if (clip) params.clip = clip;
+  // The element was not found: the full window is captured instead, and the result says so.
+  if (region !== 'full' && !clip) captured = 'full';
 
-  const { data } = await client.Page.captureScreenshot(params);
-  writeFileSync(filePath, Buffer.from(data, 'base64'));
+  const { data } = await client.Page.captureScreenshot({ format: 'png', ...(clip && { clip }) });
+  const png = Buffer.from(data, 'base64');
+  writeFileSync(filePath, png);
 
   return {
-    success: true, method: 'cdp', file_path: filePath, region,
-    size_bytes: Buffer.from(data, 'base64').length,
+    success: true, method: 'cdp', file_path: filePath, region: captured,
+    ...(captured !== region && { region_fallback: true, requested_region: region }),
+    size_bytes: png.length,
+    ...(inline && { image_base64: data }),
   };
 }

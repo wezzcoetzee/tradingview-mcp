@@ -3,11 +3,25 @@
  */
 import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, getReplayApi as _getReplayApi, requireFinite } from '../connection.js';
 import { waitFor } from '../wait.js';
+import type { ReportProgress } from './progress.js';
 
+export const TRADE_ACTIONS = ['buy', 'sell', 'close'] as const;
 export const VALID_AUTOPLAY_DELAYS = [100, 143, 200, 300, 1000, 2000, 3000, 5000, 10000];
 
 function wv(path) {
   return `(function(){ var v = ${path}; return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; })()`;
+}
+
+export const MAX_STEP_COUNT = 500;
+
+/** Millisecond timestamp (UTC midnight) for a strict YYYY-MM-DD date; rejects impossible dates like 2026-02-31. */
+export function parseReplayDate(date: unknown): number {
+  const text = String(date);
+  const ms = /^\d{4}-\d{2}-\d{2}$/.test(text) ? Date.parse(`${text}T00:00:00Z`) : NaN;
+  if (isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== text) {
+    throw new Error(`Invalid date: "${text}". Use YYYY-MM-DD format.`);
+  }
+  return requireFinite(ms, 'replay date timestamp');
 }
 
 function _resolve(deps) {
@@ -22,6 +36,7 @@ function _resolve(deps) {
 
 export async function start({ date, _deps }: any = {}) {
   const { evaluate, evaluateAsync, getReplayApi, waitOpts } = _resolve(_deps);
+  const ts = date ? parseReplayDate(date) : null;
   const rp = await getReplayApi();
   const available = await evaluate(wv(`${rp}.isReplayAvailable()`));
   if (!available) throw new Error('Replay is not available for the current symbol/timeframe');
@@ -32,10 +47,7 @@ export async function start({ date, _deps }: any = {}) {
   // which initializes the server-side replay session. Must be awaited inside the
   // page context, otherwise the promise is fire-and-forget and replay state says
   // "started" but stepping doesn't work (issue #26).
-  if (date) {
-    const parsed = new Date(date).getTime();
-    if (isNaN(parsed)) throw new Error(`Invalid date: "${date}". Use YYYY-MM-DD format.`);
-    const ts = requireFinite(parsed, 'replay date timestamp');
+  if (ts !== null) {
     await evaluateAsync(`${rp}.selectDate(${ts}).then(function() { return 'ok'; })`);
   } else {
     await evaluateAsync(`Promise.resolve(${rp}.selectFirstAvailableDate()).then(function() { return 'ok'; })`);
@@ -61,53 +73,92 @@ export async function start({ date, _deps }: any = {}) {
   return { success: true, replay_started: true, date: date || '(first available)', current_date: currentDate };
 }
 
-export async function step({ _deps }: any = {}) {
+export async function step({ count = 1, onProgress, _deps }: { count?: number; onProgress?: ReportProgress; _deps?: unknown } = {}) {
+  if (!Number.isInteger(count) || count < 1 || count > MAX_STEP_COUNT) {
+    throw new Error(`Invalid step count ${count}. Use an integer from 1 to ${MAX_STEP_COUNT}.`);
+  }
   const { evaluate, getReplayApi, waitOpts } = _resolve(_deps);
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
   if (!started) throw new Error('Replay is not started. Use replay_start first.');
-  const before = await evaluate(wv(`${rp}.currentDate()`));
-  await evaluate(`${rp}.doStep()`);
-  // doStep() is async internally, so currentDate takes ~500ms to update.
-  const { ok, value } = await waitFor(wv(`${rp}.currentDate()`), (d) => d !== before, { timeout: 3000, ...waitOpts });
-  if (!ok) {
-    return { success: false, action: 'step', error: 'Replay date did not advance', previous_date: before, current_date: value ?? before };
+
+  let current = await evaluate(wv(`${rp}.currentDate()`));
+  let advanced = 0;
+  while (advanced < count) {
+    const before = current;
+    await evaluate(`${rp}.doStep()`);
+    // doStep() is async internally, so currentDate takes ~500ms to update.
+    const { ok, value } = await waitFor(wv(`${rp}.currentDate()`), (d) => d !== before, { timeout: 3000, ...waitOpts });
+    if (!ok) {
+      return { success: false, action: 'step', error: 'Replay date did not advance', requested: count, advanced, previous_date: before, current_date: value ?? before };
+    }
+    current = value;
+    advanced++;
+    await onProgress?.(advanced, count);
   }
-  return { success: true, action: 'step', current_date: value };
+  return { success: true, action: 'step', requested: count, advanced, current_date: current };
 }
 
-export async function autoplay({ speed, _deps }: any = {}) {
+export async function jump({ date, _deps }: { date?: string; _deps?: unknown } = {}) {
+  const ts = parseReplayDate(date);
+  const { evaluate, evaluateAsync, getReplayApi, waitOpts } = _resolve(_deps);
+  const rp = await getReplayApi();
+  const started = await evaluate(wv(`${rp}.isReplayStarted()`));
+  if (!started) throw new Error('Replay is not started. Use replay_start first.');
+
+  const before = await evaluate(wv(`${rp}.currentDate()`));
+  await evaluateAsync(`${rp}.selectDate(${ts}).then(function() { return 'ok'; })`);
+  const { ok, value } = await waitFor(wv(`${rp}.currentDate()`), (d) => d !== before, { timeout: 5000, ...waitOpts });
+  // Jumping to the day the replay is already on leaves the date unchanged.
+  if (!ok && typeof before === 'number' && Math.floor(before / 86400) === Math.floor(ts / 86400000)) {
+    return { success: true, action: 'jump', date, previous_date: before, current_date: before, unchanged: true };
+  }
+  if (!ok) {
+    return { success: false, action: 'jump', error: 'Replay date did not change', date, previous_date: before, current_date: value ?? before };
+  }
+  return { success: true, action: 'jump', date, previous_date: before, current_date: value };
+}
+
+export async function autoplay({ speed, enabled, _deps }: { speed?: number; enabled?: boolean; _deps?: unknown } = {}) {
   if (speed !== undefined && !(Number.isInteger(speed) && VALID_AUTOPLAY_DELAYS.includes(speed))) {
     throw new Error(`Invalid autoplay delay ${speed}. Valid values: ${VALID_AUTOPLAY_DELAYS.join(', ')}`);
   }
 
-  const { evaluate, getReplayApi } = _resolve(_deps);
+  const { evaluate, getReplayApi, waitOpts } = _resolve(_deps);
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
   if (!started) throw new Error('Replay is not started. Use replay_start first.');
   if (speed !== undefined) {
     await evaluate(`${rp}.changeAutoplayDelay(${speed})`);
   }
-  await evaluate(`${rp}.toggleAutoplay()`);
-  const isAutoplay = await evaluate(wv(`${rp}.isAutoplayStarted()`));
-  const currentDelay = await evaluate(wv(`${rp}.autoplayDelay()`));
-  return { success: true, autoplay_active: !!isAutoplay, delay_ms: currentDelay };
+  // `enabled` sets an explicit state; without it autoplay flips.
+  const was = !!(await evaluate(wv(`${rp}.isAutoplayStarted()`)));
+  const target = enabled ?? !was;
+  if (target !== was) await evaluate(`${rp}.toggleAutoplay()`);
+  const { ok, value } = await waitFor<boolean>(wv(`!!${rp}.isAutoplayStarted()`), (on) => on === target, { timeout: 3000, ...waitOpts });
+  const delay = await evaluate(wv(`${rp}.autoplayDelay()`));
+  if (!ok) {
+    return { success: false, error: `Autoplay did not turn ${target ? 'on' : 'off'}`, autoplay_active: !!value, delay_ms: delay };
+  }
+  return { success: true, autoplay_active: target, delay_ms: delay };
 }
 
 export async function stop({ _deps }: any = {}) {
-  const { evaluate, getReplayApi } = _resolve(_deps);
+  const { evaluate, getReplayApi, waitOpts } = _resolve(_deps);
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
   if (!started) {
     return { success: true, action: 'already_stopped' };
   }
   await evaluate(`${rp}.stopReplay()`);
+  const { ok } = await waitFor<boolean>(wv(`!!${rp}.isReplayStarted()`), (on) => !on, { timeout: 3000, ...waitOpts });
+  if (!ok) return { success: false, action: 'stop', error: 'Replay is still running after stopReplay' };
   return { success: true, action: 'replay_stopped' };
 }
 
 export async function trade({ action, _deps }: any = {}) {
   const { evaluate, getReplayApi, waitOpts } = _resolve(_deps);
-  if (!['buy', 'sell', 'close'].includes(action)) throw new Error('Invalid action. Use: buy, sell, or close');
+  if (!(TRADE_ACTIONS as readonly string[]).includes(action)) throw new Error('Invalid action. Use: buy, sell, or close');
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
   if (!started) throw new Error('Replay is not started. Use replay_start first.');

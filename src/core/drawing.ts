@@ -10,37 +10,33 @@ function _resolve(deps) {
   return { evaluate, getChartApi: deps?.getChartApi || _getChartApi, waitOpts: { evaluate, ...deps?.waitOpts } };
 }
 
-export async function drawShape({ shape, point, point2, overrides: overridesRaw, text, _deps }: any = {}) {
+interface ChartPoint { time: number; price: number }
+
+export async function drawShape({ shape, point, point2, more_points, lock, overrides: overridesRaw, text, _deps }: any = {}) {
   const { evaluate, getChartApi, waitOpts } = _resolve(_deps);
   const overrides = overridesRaw ? parseJsonObject(overridesRaw, 'overrides') : {};
   if (!point || typeof point !== 'object') {
     throw new Error('point is required, e.g. {"time": 1700000000, "price": 100}');
   }
+  if (more_points?.length && !point2) throw new Error('more_points needs point2: points are used in the order point, point2, more_points');
+  const named: [string, ChartPoint][] = [
+    ['point', point],
+    ...(point2 ? [['point2', point2] as [string, ChartPoint]] : []),
+    ...((more_points ?? []) as ChartPoint[]).map((p, i): [string, ChartPoint] => [`more_points[${i}]`, p]),
+  ];
+  const points = named.map(([name, p]) => ({
+    time: requireFinite(p?.time, `${name}.time`),
+    price: requireFinite(p?.price, `${name}.price`),
+  }));
   const apiPath = await getChartApi();
-  const overridesStr = JSON.stringify(overrides);
-  const textStr = text ? JSON.stringify(text) : '""';
-
-  const p1time = requireFinite(point.time, 'point.time');
-  const p1price = requireFinite(point.price, 'point.price');
+  const options = `{ shape: ${safeString(shape)}, overrides: ${JSON.stringify(overrides)}, text: ${text ? JSON.stringify(text) : '""'}${lock ? ', lock: true' : ''} }`;
 
   const before = await evaluate(`${apiPath}.getAllShapes().map(function(s) { return s.id; })`);
 
-  if (point2) {
-    const p2time = requireFinite(point2.time, 'point2.time');
-    const p2price = requireFinite(point2.price, 'point2.price');
-    await evaluate(`
-      ${apiPath}.createMultipointShape(
-        [{ time: ${p1time}, price: ${p1price} }, { time: ${p2time}, price: ${p2price} }],
-        { shape: ${safeString(shape)}, overrides: ${overridesStr}, text: ${textStr} }
-      )
-    `);
+  if (points.length > 1) {
+    await evaluate(`${apiPath}.createMultipointShape(${JSON.stringify(points)}, ${options})`);
   } else {
-    await evaluate(`
-      ${apiPath}.createShape(
-        { time: ${p1time}, price: ${p1price} },
-        { shape: ${safeString(shape)}, overrides: ${overridesStr}, text: ${textStr} }
-      )
-    `);
+    await evaluate(`${apiPath}.createShape(${JSON.stringify(points[0])}, ${options})`);
   }
 
   const { value: after } = await waitFor<string[]>(
@@ -50,7 +46,11 @@ export async function drawShape({ shape, point, point2, overrides: overridesRaw,
   );
   const newId = (after || []).find(id => !(before || []).includes(id)) || null;
   if (!newId) return { success: false, shape, entity_id: null, error: 'Shape was not created. Check the shape name and points.' };
-  return { success: true, shape, entity_id: newId };
+  if (!lock) return { success: true, shape, entity_id: newId };
+
+  const locked = await evaluate(`${apiPath}.getShapeById(${safeString(newId)}).isLocked()`);
+  if (!locked) return { success: false, shape, entity_id: newId, error: 'Shape was created but is not locked' };
+  return { success: true, shape, entity_id: newId, locked: true };
 }
 
 export async function listDrawings({ _deps }: any = {}) {
@@ -60,13 +60,17 @@ export async function listDrawings({ _deps }: any = {}) {
     (function() {
       var api = ${apiPath};
       var all = api.getAllShapes();
-      return all.map(function(s) { return { id: s.id, name: s.name }; });
+      return all.map(function(s) {
+        var entry = { id: s.id, name: s.name };
+        try { entry.points = api.getShapeById(s.id).getPoints(); } catch(e) {}
+        return entry;
+      });
     })()
   `);
   return { success: true, count: shapes?.length || 0, shapes: shapes || [] };
 }
 
-export async function getProperties({ entity_id, _deps }: any = {}) {
+export async function getProperties({ entity_id, verbose, _deps }: any = {}) {
   const { evaluate, getChartApi } = _resolve(_deps);
   const apiPath = await getChartApi();
   const result = await evaluate(`
@@ -76,8 +80,7 @@ export async function getProperties({ entity_id, _deps }: any = {}) {
       var props = { entity_id: eid };
       var shape = api.getShapeById(eid);
       if (!shape) return { error: 'Shape not found: ' + eid };
-      var methods = [];
-      try { for (var key in shape) { if (typeof shape[key] === 'function') methods.push(key); } props.available_methods = methods; } catch(e) {}
+      ${verbose ? `try { var methods = []; for (var key in shape) { if (typeof shape[key] === 'function') methods.push(key); } props.available_methods = methods; } catch(e) {}` : ''}
       try { var pts = shape.getPoints(); if (pts) props.points = pts; } catch(e) { props.points_error = e.message; }
       try { var ovr = shape.getProperties(); if (ovr) props.properties = ovr; } catch(e) {
         try { var ovr2 = shape.properties(); if (ovr2) props.properties = ovr2; } catch(e2) { props.properties_error = e2.message; }

@@ -13,9 +13,9 @@ export function registerPaneTools(server: McpServer) {
 
   defineTool(server, {
     name: 'pane_set_layout',
-    description: 'Change the chart grid layout (e.g., single, 2x2, 2h, 3v)',
+    description: 'Change the chart grid layout (codes such as s, 2h, 2v, 4, 6, 8; the schema lists them all)',
     inputSchema: {
-      layout: z.string().describe('Layout code: s (single), 2h, 2v, 2-1, 1-2, 3h, 3v, 4 (2x2), 6, 8. Also accepts: single, 2x1, 1x2, 2x2, quad'),
+      layout: z.enum(core.LAYOUT_INPUTS).describe('Layout code (s = single, 4 = 2x2 grid, 2h/2v = two side by side or stacked) or alias such as single, 2x2, quad'),
     },
     annotations: IDEMPOTENT_WRITE,
     run: ({ layout }) => core.setLayout({ layout }),

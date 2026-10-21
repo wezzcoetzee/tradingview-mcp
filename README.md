@@ -221,7 +221,7 @@ Claude reads [`CLAUDE.md`](CLAUDE.md) automatically when working in this project
 | "Draw a level at 24500" | `draw_shape` (horizontal_line) |
 | "Take a screenshot" | `capture_screenshot` |
 
-## Tool Reference (78 MCP tools)
+## Tool Reference
 
 ### Chart Reading
 
@@ -254,7 +254,7 @@ Read `line.new()`, `label.new()`, `table.new()`, `box.new()` output from any vis
 | `chart_set_type` | Change style (Candles, HeikinAshi, Line, Area, Renko) |
 | `chart_manage_indicator` | Add/remove indicators. **Use full names**: "Relative Strength Index" not "RSI" |
 | `chart_scroll_to_date` | Jump to a date (ISO: "2025-01-15") |
-| `chart_set_visible_range` | Zoom to exact range (unix timestamps) |
+| `chart_set_visible_range` / `chart_get_visible_range` | Zoom to or read the visible range (unix seconds) |
 | `symbol_info` / `symbol_search` | Symbol metadata and search |
 | `indicator_set_inputs` / `indicator_toggle_visibility` | Change indicator settings, show/hide |
 
@@ -280,7 +280,7 @@ Read `line.new()`, `label.new()`, `table.new()`, `box.new()` output from any vis
 | Tool | Step |
 |------|------|
 | `pine_set_source` | 1. Inject code into editor |
-| `pine_smart_compile` | 2. Compile with auto-detection + error check |
+| `pine_smart_compile` | 2. Compile with auto-detection + error check (`pine_compile` is a raw button click) |
 | `pine_get_errors` | 3. Read compilation errors if any |
 | `pine_get_console` | 4. Read log.info() output |
 | `pine_save` | 5. Save to TradingView cloud |
@@ -295,7 +295,8 @@ Read `line.new()`, `label.new()`, `table.new()`, `box.new()` output from any vis
 | Tool | Step |
 |------|------|
 | `replay_start` | Enter replay at a date |
-| `replay_step` | Advance one bar |
+| `replay_step` | Advance one or more bars |
+| `replay_jump` | Jump to another date mid-replay |
 | `replay_autoplay` | Auto-advance (set speed in ms) |
 | `replay_trade` | Buy/sell/close positions |
 | `replay_status` | Check position, P&L, date |
@@ -306,15 +307,21 @@ Read `line.new()`, `label.new()`, `table.new()`, `box.new()` output from any vis
 | Tool | What it does |
 |------|-------------|
 | `draw_shape` | Draw horizontal_line, trend_line, rectangle, text |
-| `draw_list` / `draw_remove_one` / `draw_clear` | Manage drawings |
+| `draw_list` / `draw_get_properties` / `draw_remove_one` / `draw_clear` | Manage drawings |
 | `alert_create` / `alert_list` / `alert_delete` | Manage price alerts |
-| `capture_screenshot` | Screenshot (regions: full, chart, strategy_tester) |
+| `capture_screenshot` | Screenshot (regions: full, chart, strategy_tester); saved to `TV_MCP_SCREENSHOT_DIR` (default: OS temp dir), `inline: true` also returns the image |
 | `batch_run` | Run action across multiple symbols/timeframes |
 | `watchlist_get` / `watchlist_add` | Read/modify watchlist |
 | `layout_list` / `layout_switch` | Manage saved layouts |
-| `ui_open_panel` / `ui_click` | UI automation |
+| `ui_open_panel` / `ui_click` / `ui_find_element` / `ui_hover` / `ui_scroll` / `ui_mouse_click` / `ui_keyboard` / `ui_type_text` / `ui_fullscreen` | UI automation |
 | `ui_evaluate` | Arbitrary JS in the TradingView page (disabled by default — see [Security](#security)) |
-| `tv_launch` / `tv_health_check` / `tv_discover` | Connection management |
+| `tv_launch` / `tv_health_check` / `tv_discover` / `tv_ui_state` | Connection management |
+| `data_get_strategy_results` / `data_get_trades` / `data_get_equity` | Strategy Tester metrics, trades, equity curve |
+| `data_get_indicator` / `depth_get` | One study's inputs, order book |
+
+## Workflow Prompts
+
+The `skills/` workflows (Pine development loop, multi-symbol scan, replay practice, strategy report, chart analysis) are served as MCP prompts, so any client can offer them without copying files.
 
 ## Context Management
 
@@ -382,7 +389,7 @@ Comprehensive test suite covering: tool wiring, Pine Script static analysis, ser
 Claude Code  ←→  MCP Server (stdio)  ←→  CDP (port 9222)  ←→  TradingView Desktop (Electron)
 ```
 
-- **Transport**: MCP over stdio (78 tools) + CLI (`tv` command, 30 commands with 66 subcommands)
+- **Transport**: MCP over stdio (tools, plus the `skills/` workflows as prompts) + CLI (`tv` command)
 - **Connection**: Chrome DevTools Protocol on 127.0.0.1:9222 (set `TV_CDP_PORT` to use another port; `tv_launch {port}` switches the running server too)
 - **Streaming**: Poll-and-diff loop with deduplication, JSONL output to stdout
 - **No dependencies** beyond `@modelcontextprotocol/sdk` and `chrome-remote-interface`
