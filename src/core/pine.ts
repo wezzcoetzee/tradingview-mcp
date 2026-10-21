@@ -101,7 +101,7 @@ export async function ensurePineEditorOpen() {
 
 // ── Pure / offline functions ──
 
-export function analyze({ source }: any = {}) {
+export function analyze({ source }: { source: string }) {
   const lines = source.split('\n');
   const diagnostics = [];
 

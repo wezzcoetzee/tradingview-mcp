@@ -104,7 +104,7 @@ describe('debug helper', () => {
     try {
       assert.equal(isDebugEnabled(), true);
 
-      const writes = [];
+      const writes: string[] = [];
       const origWrite = process.stderr.write;
       process.stderr.write = (chunk) => { writes.push(String(chunk)); return true; };
       try {

@@ -13,8 +13,8 @@ import { drawShape } from '../src/core/drawing.js';
 // ── Mock helpers ─────────────────────────────────────────────────────────
 
 function mockEval() {
-  const calls = [];
-  const fn = async (expr) => { calls.push(expr); return undefined; };
+  const calls: string[] = [];
+  const fn = async (expr: string) => { calls.push(expr); return undefined; };
   fn.calls = calls;
   return fn;
 }
@@ -138,8 +138,8 @@ describe('chart.js — sanitized evaluate calls', () => {
     await setSymbol({ symbol: "NYMEX:CL1!", _deps });
     const call = evaluate.calls.find(c => c.includes('setSymbol'));
     assert.ok(call, 'setSymbol called');
-    assert.ok(call.includes('"NYMEX:CL1!"'), 'symbol wrapped in double quotes via safeString');
-    assert.ok(!call.includes("'NYMEX:CL1!'"), 'no single-quoted interpolation');
+    assert.ok(call!.includes('"NYMEX:CL1!"'), 'symbol wrapped in double quotes via safeString');
+    assert.ok(!call!.includes("'NYMEX:CL1!'"), 'no single-quoted interpolation');
   });
 
   it('setSymbol sanitizes injection payload', async () => {
@@ -149,15 +149,15 @@ describe('chart.js — sanitized evaluate calls', () => {
     const call = evaluate.calls.find(c => c.includes('setSymbol'));
     // Payload must be wrapped in JSON.stringify output — double-quoted, escaped
     // It should NOT appear as a bare unquoted string that could break out
-    assert.ok(call.includes(safeString(payload)), 'payload is JSON-escaped in evaluate call');
-    assert.ok(!call.includes(`setSymbol('`), 'no single-quoted interpolation');
+    assert.ok(call!.includes(safeString(payload)), 'payload is JSON-escaped in evaluate call');
+    assert.ok(!call!.includes(`setSymbol('`), 'no single-quoted interpolation');
   });
 
   it('setTimeframe uses safeString', async () => {
     const { _deps, evaluate } = mockDeps();
     await setTimeframe({ timeframe: '15', _deps });
     const call = evaluate.calls.find(c => c.includes('setResolution'));
-    assert.ok(call.includes('"15"'), 'timeframe wrapped via safeString');
+    assert.ok(call!.includes('"15"'), 'timeframe wrapped via safeString');
   });
 
   it('setType accepts known chart styles', async () => {
@@ -198,7 +198,7 @@ describe('chart.js — sanitized evaluate calls', () => {
     // First evaluate call is getAllStudies (before), then createStudy, then getAllStudies (after).
     // Simulate the study actually being added so manageIndicator's poll loop exits immediately.
     let created = false;
-    const evalFn = async (expr) => {
+    const evalFn = async (expr: string) => {
       evaluate.calls.push(expr);
       if (expr.includes('createStudy')) { created = true; return undefined; }
       if (expr.includes('getAllStudies')) return created ? ['id1', 'id2'] : ['id1'];
@@ -224,7 +224,7 @@ describe('chart.js — sanitized evaluate calls', () => {
     const result = await manageIndicator({ action: 'remove', entity_id: "abc123", _deps });
     assert.equal(result.success, true);
     const call = calls.find(c => c.includes('removeEntity'));
-    assert.ok(call.includes('"abc123"'), 'entity_id via safeString');
+    assert.ok(call!.includes('"abc123"'), 'entity_id via safeString');
   });
 
   it('setVisibleRange validates from/to with requireFinite', async () => {
@@ -249,8 +249,8 @@ describe('chart.js — sanitized evaluate calls', () => {
     await setVisibleRange({ from: 1700000000, to: 1700100000, _deps });
     const call = evaluate.calls.find(c => c.includes('zoomToBarsRange'));
     assert.ok(call, 'zoomToBarsRange called');
-    assert.ok(call.includes('1700000000'), 'from value in call');
-    assert.ok(call.includes('1700100000'), 'to value in call');
+    assert.ok(call!.includes('1700000000'), 'from value in call');
+    assert.ok(call!.includes('1700100000'), 'to value in call');
   });
 });
 
@@ -287,15 +287,15 @@ describe('drawing.js — sanitized evaluate calls', () => {
     await drawShape({ shape: 'horizontal_line', point: { time: 100, price: 50 }, _deps });
     const call = evaluate.calls.find(c => c.includes('createShape'));
     assert.ok(call, 'createShape called');
-    assert.ok(call.includes('"horizontal_line"'), 'shape name via safeString');
+    assert.ok(call!.includes('"horizontal_line"'), 'shape name via safeString');
   });
 
   it('drawShape uses validated coordinates in evaluate', async () => {
     const { _deps, evaluate } = mockDeps();
     await drawShape({ shape: 'horizontal_line', point: { time: 1700000000, price: 5000.50 }, _deps });
     const call = evaluate.calls.find(c => c.includes('createShape'));
-    assert.ok(call.includes('1700000000'), 'time in call');
-    assert.ok(call.includes('5000.5'), 'price in call');
+    assert.ok(call!.includes('1700000000'), 'time in call');
+    assert.ok(call!.includes('5000.5'), 'price in call');
   });
 
   it('drawShape multipoint uses safeString and requireFinite', async () => {
@@ -308,7 +308,7 @@ describe('drawing.js — sanitized evaluate calls', () => {
     });
     const call = evaluate.calls.find(c => c.includes('createMultipointShape'));
     assert.ok(call, 'createMultipointShape called');
-    assert.ok(call.includes('"trend_line"'), 'shape name via safeString');
+    assert.ok(call!.includes('"trend_line"'), 'shape name via safeString');
   });
 });
 

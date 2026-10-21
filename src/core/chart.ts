@@ -4,9 +4,9 @@
 import { safeString, requireFinite, requireText } from '../connection.js';
 import { waitFor } from '../wait.js';
 import { parseJsonObject } from './json.js';
-import { CHART_API, resolveDeps as _resolve } from './_page.js';
+import { CHART_API, own, resolveDeps as _resolve, type WithDeps } from './_page.js';
 
-export async function getState({ _deps }: any = {}) {
+export async function getState({ _deps }: WithDeps = {}) {
   const { evaluate } = _resolve(_deps);
   const state = await evaluate(`
     (function() {
@@ -29,7 +29,11 @@ export async function getState({ _deps }: any = {}) {
   return { success: true, ...state };
 }
 
-export async function setSymbol({ symbol: raw, _deps }: any = {}) {
+export interface SetSymbolParams extends WithDeps {
+  symbol: string;
+}
+
+export async function setSymbol({ symbol: raw, _deps }: SetSymbolParams) {
   const { evaluate, waitForChartReady } = _resolve(_deps);
   const symbol = requireText(raw, 'symbol');
   await evaluate(`${CHART_API}.setSymbol(${safeString(symbol)}, {})`);
@@ -40,7 +44,11 @@ export async function setSymbol({ symbol: raw, _deps }: any = {}) {
   return { success: true, symbol, chart_ready: true };
 }
 
-export async function setTimeframe({ timeframe: raw, _deps }: any = {}) {
+export interface SetTimeframeParams extends WithDeps {
+  timeframe: string;
+}
+
+export async function setTimeframe({ timeframe: raw, _deps }: SetTimeframeParams) {
   const { evaluate, waitForChartReady } = _resolve(_deps);
   const timeframe = requireText(raw, 'timeframe');
   await evaluate(`${CHART_API}.setResolution(${safeString(timeframe)}, {})`);
@@ -61,12 +69,17 @@ export const CHART_TYPES: Record<string, number> = {
 export const CHART_TYPE_NAMES = Object.keys(CHART_TYPES) as [string, ...string[]];
 const VALID_CHART_STYLES = new Set(Object.values(CHART_TYPES));
 
-export async function setType({ chart_type, _deps }: any = {}) {
+export interface SetTypeParams extends WithDeps {
+  /** A CHART_TYPES name or a style number. */
+  chart_type: string | number;
+}
+
+export async function setType({ chart_type, _deps }: SetTypeParams) {
   const { evaluate, waitOpts } = _resolve(_deps);
   if (chart_type == null || String(chart_type).trim() === '') {
     throw new Error('chart_type is required. Use a name (Candles, Line, etc.) or a style number.');
   }
-  const typeNum = CHART_TYPES[chart_type] ?? Number(chart_type);
+  const typeNum = own(CHART_TYPES, String(chart_type)) ?? Number(chart_type);
   if (!VALID_CHART_STYLES.has(typeNum)) {
     throw new Error(`Unknown chart type: ${chart_type}. Use a name (${Object.keys(CHART_TYPES).join(', ')}) or one of the numbers ${[...VALID_CHART_STYLES].join(', ')}.`);
   }
@@ -80,7 +93,17 @@ export async function setType({ chart_type, _deps }: any = {}) {
 
 const STUDY_IDS = `${CHART_API}.getAllStudies().map(function(s) { return s.id; })`;
 
-export async function manageIndicator({ action, indicator, entity_id, inputs: inputsRaw, _deps }: any = {}) {
+export interface ManageIndicatorParams extends WithDeps {
+  action: 'add' | 'remove';
+  /** Full indicator name, required to add. */
+  indicator?: string;
+  /** Study id from chart_get_state, required to remove. */
+  entity_id?: string;
+  /** Inputs to apply to a newly added indicator, as an object or a JSON string. */
+  inputs?: Record<string, unknown> | string;
+}
+
+export async function manageIndicator({ action, indicator, entity_id, inputs: inputsRaw, _deps }: ManageIndicatorParams) {
   const { evaluate, evaluateAsync, waitOpts } = _resolve(_deps);
   const inputs = inputsRaw ? parseJsonObject(inputsRaw, 'inputs') : undefined;
 
@@ -130,7 +153,7 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
   }
 }
 
-export async function getVisibleRange({ _deps }: any = {}) {
+export async function getVisibleRange({ _deps }: WithDeps = {}) {
   const { evaluate } = _resolve(_deps);
   const result = await evaluate(`
     (function() {
@@ -140,6 +163,8 @@ export async function getVisibleRange({ _deps }: any = {}) {
   `);
   return { success: true, visible_range: result.visible_range, bars_range: result.bars_range };
 }
+
+type Evaluate = ReturnType<typeof _resolve>['evaluate'];
 
 interface LoadedBars { loaded_from: number | null; loaded_to: number | null }
 
@@ -153,7 +178,7 @@ type FoundZoom = Extract<ZoomResult, { found: true }>;
 interface TimeRange { from: number; to: number }
 
 /** Zoom to the loaded bars inside [from, to]; does nothing when no loaded bar falls in the range. */
-async function zoomToTimeRange(evaluate: (expr: string) => Promise<any>, from: number, to: number): Promise<ZoomResult> {
+async function zoomToTimeRange(evaluate: Evaluate, from: number, to: number): Promise<ZoomResult> {
   return evaluate(`
     (function() {
       var chart = ${CHART_API};
@@ -201,7 +226,7 @@ function partialLoadFlag(requested: TimeRange, { loaded_from, loaded_to }: Loade
 async function waitForVisibleRange(
   zoom: FoundZoom,
   resolution: string,
-  evaluate: (expr: string) => Promise<any>,
+  evaluate: Evaluate,
   waitOpts: object,
 ) {
   const expected: TimeRange = { from: zoom.zoomed_from, to: zoom.zoomed_to };
@@ -216,7 +241,13 @@ async function waitForVisibleRange(
   return { ...wait, expected };
 }
 
-export async function setVisibleRange({ from, to, _deps }: any = {}) {
+export interface SetVisibleRangeParams extends WithDeps {
+  /** Unix seconds. */
+  from: number;
+  to: number;
+}
+
+export async function setVisibleRange({ from, to, _deps }: SetVisibleRangeParams) {
   const { evaluate, waitOpts } = _resolve(_deps);
   const requested: TimeRange = { from: requireFinite(from, 'from'), to: requireFinite(to, 'to') };
   if (requested.from > requested.to) throw new Error(`from (${requested.from}) must not be after to (${requested.to})`);
@@ -230,7 +261,7 @@ export async function setVisibleRange({ from, to, _deps }: any = {}) {
   return { success: true, requested, actual: value, ...partialLoadFlag(requested, zoom) };
 }
 
-const UNIT_SECONDS = { S: 1, D: 86400, W: 604800, M: 2592000 };
+const UNIT_SECONDS: Record<string, number> = { S: 1, D: 86400, W: 604800, M: 2592000 };
 
 /** Seconds per bar for a TradingView resolution: "5" and "240" are minutes, "D"/"2D"/"3M"/"12M" are day/week/month multiples. */
 export function secondsPerBar(resolution: string): number {
@@ -242,7 +273,12 @@ export function secondsPerBar(resolution: string): number {
   return isNaN(mins) ? 60 : mins * 60;
 }
 
-export async function scrollToDate({ date, _deps }: any = {}) {
+export interface ScrollToDateParams extends WithDeps {
+  /** ISO date, unix seconds or unix milliseconds. */
+  date: string;
+}
+
+export async function scrollToDate({ date, _deps }: ScrollToDateParams) {
   const { evaluate, waitOpts } = _resolve(_deps);
   let timestamp: number;
   if (/^\d+$/.test(date)) {
@@ -267,7 +303,7 @@ export async function scrollToDate({ date, _deps }: any = {}) {
   return { success: true, date, centered_on: timestamp, resolution, window: { from, to }, ...partialLoadFlag({ from, to }, zoom) };
 }
 
-export async function symbolInfo({ _deps }: any = {}) {
+export async function symbolInfo({ _deps }: WithDeps = {}) {
   const { evaluate } = _resolve(_deps);
   const result = await evaluate(`
     (function() {
@@ -285,7 +321,21 @@ export async function symbolInfo({ _deps }: any = {}) {
 
 const SYMBOL_SEARCH_TIMEOUT_MS = 10000;
 
-export async function symbolSearch({ query, type, exchange }: any = {}) {
+export interface SymbolSearchParams {
+  query: string;
+  type?: string;
+  exchange?: string;
+}
+
+interface SymbolSearchHit {
+  symbol: string;
+  description?: string;
+  exchange?: string;
+  prefix?: string;
+  type?: string;
+}
+
+export async function symbolSearch({ query, type, exchange }: SymbolSearchParams) {
   // Use TradingView's public symbol search REST API (works without auth)
   const params = new URLSearchParams({
     text: query,
@@ -301,10 +351,10 @@ export async function symbolSearch({ query, type, exchange }: any = {}) {
     signal: AbortSignal.timeout(SYMBOL_SEARCH_TIMEOUT_MS),
   });
   if (!resp.ok) throw new Error(`Symbol search API returned ${resp.status}`);
-  const data = await resp.json();
+  const data: { symbols?: SymbolSearchHit[] } | SymbolSearchHit[] = await resp.json();
 
-  const strip = s => (s || '').replace(/<\/?em>/g, '');
-  const results = (data.symbols || data || []).slice(0, 15).map(r => ({
+  const strip = (s?: string) => (s || '').replace(/<\/?em>/g, '');
+  const results = (Array.isArray(data) ? data : data.symbols ?? []).slice(0, 15).map(r => ({
     symbol: strip(r.symbol),
     description: strip(r.description),
     exchange: r.exchange || r.prefix || '',

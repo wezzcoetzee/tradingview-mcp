@@ -17,7 +17,7 @@ function require_fs() { return { writeFileSync, unlinkSync }; }
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI = join(__dirname, '..', 'src', 'cli', 'index.ts');
 
-function run(args, opts = {}) {
+function run(args: string[], opts: object = {}) {
   try {
     const stdout = execFileSync(process.execPath, [CLI, ...args], {
       encoding: 'utf-8',
@@ -26,10 +26,11 @@ function run(args, opts = {}) {
     });
     return { stdout, exitCode: 0 };
   } catch (err) {
+    const failure = err as { stdout?: string; stderr?: string; status?: number };
     return {
-      stdout: err.stdout || '',
-      stderr: err.stderr || '',
-      exitCode: err.status,
+      stdout: failure.stdout || '',
+      stderr: failure.stderr || '',
+      exitCode: failure.status,
     };
   }
 }
@@ -59,7 +60,7 @@ describe('CLI — help and routing', () => {
   it('unknown command exits 1', () => {
     const { exitCode, stderr } = run(['nonexistent']);
     assert.equal(exitCode, 1);
-    assert.ok(stderr.includes('Unknown command'));
+    assert.ok(stderr?.includes('Unknown command'));
   });
 
   it('pine --help shows subcommands', () => {
@@ -104,14 +105,14 @@ describe('CLI — pine analyze (offline)', () => {
     const { stdout, exitCode } = run(['pine', 'analyze'], { input: source });
     assert.equal(exitCode, 0);
     const result = JSON.parse(stdout);
-    assert.ok(result.diagnostics.some(d => d.message.includes('strategy()')));
+    assert.ok(result.diagnostics.some((d: { message: string }) => d.message.includes('strategy()')));
   });
 
   it('errors without input', () => {
     // When stdin is a TTY (no pipe), analyze should error
     const { exitCode, stderr } = run(['pine', 'analyze']);
     assert.equal(exitCode, 1);
-    assert.ok(stderr.includes('No source provided'));
+    assert.ok(stderr?.includes('No source provided'));
   });
 
   it('reads --file flag', () => {

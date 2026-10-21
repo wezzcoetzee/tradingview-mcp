@@ -4,7 +4,7 @@
  */
 import { evaluateAsync, safeString, requireText } from '../connection.js';
 import { waitFor, symbolMatches } from '../wait.js';
-import { CHART_API, resolveDeps as _resolve } from './_page.js';
+import { CHART_API, own, resolveDeps as _resolve, type WithDeps } from './_page.js';
 
 const CWC = 'window.TradingViewApi._chartWidgetCollection';
 
@@ -18,14 +18,14 @@ const ACTIVE_PANE_INDEX = `(function() {
   return -1;
 })()`;
 
-const LAYOUT_ALIASES = {
+const LAYOUT_ALIASES: Record<string, string> = {
   'single': 's', '1': 's', '1x1': 's',
   '2x1': '2h', '1x2': '2v',
   '2x2': '4', 'grid': '4', 'quad': '4',
   '3x1': '3h', '1x3': '3v',
 };
 
-const LAYOUT_NAMES = {
+const LAYOUT_NAMES: Record<string, string> = {
   's': '1 chart',
   '2h': '2 horizontal',
   '2v': '2 vertical',
@@ -52,7 +52,7 @@ export const LAYOUT_INPUTS = [...Object.keys(LAYOUT_NAMES), ...Object.keys(LAYOU
 /**
  * List all panes in the current layout with their symbols and index.
  */
-export async function list({ _deps }: any = {}) {
+export async function list({ _deps }: WithDeps = {}) {
   const { evaluate } = _resolve(_deps);
   const result = await evaluate(`
     (function() {
@@ -84,7 +84,7 @@ export async function list({ _deps }: any = {}) {
   return {
     success: true,
     layout: result.layout,
-    layout_name: LAYOUT_NAMES[result.layout] || result.layout,
+    layout_name: own(LAYOUT_NAMES, result.layout) || result.layout,
     chart_count: result.chart_count,
     active_index: result.active_index,
     panes: result.panes,
@@ -95,12 +95,16 @@ export async function list({ _deps }: any = {}) {
  * Set the chart layout grid.
  * @param {string} layout - Layout code: s, 2h, 2v, 2-1, 1-2, 3h, 3v, 4, 6, 8, etc.
  */
-export async function setLayout({ layout }: any = {}) {
+export interface SetLayoutParams {
+  layout: string;
+}
+
+export async function setLayout({ layout }: SetLayoutParams) {
   const code = requireText(layout, 'layout').toLowerCase().replace(/\s+/g, '');
 
-  const resolved = LAYOUT_ALIASES[code] || code;
+  const resolved = own(LAYOUT_ALIASES, code) || code;
 
-  if (!LAYOUT_NAMES[resolved]) {
+  if (!own(LAYOUT_NAMES, resolved)) {
     const available = Object.entries(LAYOUT_NAMES).map(([k, v]) => `  ${k} — ${v}`).join('\n');
     throw new Error(`Unknown layout "${layout}". Available layouts:\n${available}`);
   }
@@ -118,7 +122,7 @@ export async function setLayout({ layout }: any = {}) {
   return {
     success: true,
     layout: resolved,
-    layout_name: LAYOUT_NAMES[resolved],
+    layout_name: own(LAYOUT_NAMES, resolved),
     chart_count: state.chart_count,
     panes: state.panes,
   };
@@ -127,7 +131,11 @@ export async function setLayout({ layout }: any = {}) {
 /**
  * Focus a specific pane by index.
  */
-export async function focus({ index, _deps }: any = {}) {
+export interface FocusParams extends WithDeps {
+  index: number;
+}
+
+export async function focus({ index, _deps }: FocusParams) {
   const { evaluate, waitOpts } = _resolve(_deps);
   const idx = Number(index);
   if (!Number.isInteger(idx) || idx < 0) {
@@ -158,7 +166,11 @@ export async function focus({ index, _deps }: any = {}) {
  * Set the symbol on a specific pane by index.
  * Works by focusing the pane, then using the active chart's setSymbol.
  */
-export async function setSymbol({ index, symbol: raw, _deps }: any = {}) {
+export interface SetPaneSymbolParams extends FocusParams {
+  symbol: string;
+}
+
+export async function setSymbol({ index, symbol: raw, _deps }: SetPaneSymbolParams) {
   const { evaluate, waitOpts } = _resolve(_deps);
   const symbol = requireText(raw, 'symbol');
   const idx = Number(index);

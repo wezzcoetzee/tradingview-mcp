@@ -1,5 +1,6 @@
 import { register } from '../router.js';
 import * as core from '../../core/capture.js';
+import type { CaptureRegion } from '../../core/capture.js';
 
 register('screenshot', {
   description: 'Take a screenshot of the chart',
@@ -8,7 +9,7 @@ register('screenshot', {
     output: { type: 'string', short: 'o', description: 'Custom filename (without .png)' },
   },
   handler: (opts) => core.captureScreenshot({
-    region: opts.region,
+    region: opts.region as CaptureRegion | undefined,
     filename: opts.output,
   }),
 });

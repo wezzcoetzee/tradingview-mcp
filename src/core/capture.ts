@@ -16,7 +16,7 @@ export function screenshotDir(): string {
   return process.env.TV_MCP_SCREENSHOT_DIR || join(tmpdir(), 'tradingview-mcp-screenshots');
 }
 
-export function sanitizeFilename(name) {
+export function sanitizeFilename(name: unknown) {
   let s = String(name).replace(/[^\w.-]/g, '_').slice(0, 80);
   if (s.startsWith('.') || s.length === 0) s = '_' + s;
   return s;

@@ -1,5 +1,5 @@
 import CDP from 'chrome-remote-interface';
-import { debug } from './debug.js';
+import { debug, errorMessage } from './debug.js';
 
 const CDP_HOST = '127.0.0.1';
 const DEFAULT_CDP_PORT = 9222;
@@ -96,7 +96,7 @@ export { KNOWN_PATHS };
  * Uses JSON.stringify to produce a properly escaped JS string literal (with quotes).
  * Prevents injection via quotes, backticks, template literals, or control chars.
  */
-export function safeString(str) {
+export function safeString(str: unknown) {
   if (str === null || str === undefined) {
     throw new Error('safeString: value must not be null or undefined');
   }
@@ -107,7 +107,7 @@ export function safeString(str) {
  * Validate that a value is a finite number. Throws if NaN, Infinity, or non-numeric.
  * Prevents corrupt values from reaching TradingView APIs that persist to cloud state.
  */
-export function requireFinite(value, name) {
+export function requireFinite(value: unknown, name: string) {
   const n = Number(value);
   if (!Number.isFinite(n)) throw new Error(`${name} must be a finite number, got: ${value}`);
   return n;
@@ -130,7 +130,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** False for errors that mean nothing is listening on the CDP port, so retrying is pointless. */
 export function isTransientError(err: unknown): boolean {
@@ -189,7 +188,7 @@ async function openConnection(): Promise<Connection> {
     client = await withTimeout(pending, CONNECT_TIMEOUT_MS, 'CDP connect');
   } catch (err) {
     // The socket can still open after we gave up on it; close it instead of leaking it.
-    pending.then(late => late.close()).catch(() => {});
+    pending.then((late) => late.close()).catch(() => {});
     throw err;
   }
 
@@ -295,7 +294,7 @@ export async function disconnect() {
 // Each returns the STRING expression path after verifying it exists.
 // Callers use the returned string in their own evaluate() calls.
 
-async function verifyAndReturn(path, name) {
+async function verifyAndReturn(path: string, name: string) {
   const exists = await evaluate(`typeof (${path}) !== 'undefined' && (${path}) !== null`);
   if (!exists) {
     throw new Error(`${name} not available at ${path}`);

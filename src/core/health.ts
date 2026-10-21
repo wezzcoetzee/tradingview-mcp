@@ -83,7 +83,7 @@ export async function discover() {
     })()
   `);
 
-  const available = Object.values(paths).filter((v: any) => v.available).length;
+  const available = Object.values<{ available: boolean }>(paths).filter((v) => v.available).length;
   const total = Object.keys(paths).length;
 
   return { success: true, apis_available: available, apis_total: total, apis: paths };
@@ -194,7 +194,7 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
     return { success: true, already_running: true, platform, ...cdpInfo(running) };
   }
 
-  const pathMap = {
+  const pathMap: Record<string, string[]> = {
     darwin: [
       '/Applications/TradingView.app/Contents/MacOS/TradingView',
       `${process.env.HOME}/Applications/TradingView.app/Contents/MacOS/TradingView`,
@@ -213,7 +213,7 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
     ],
   };
 
-  let tvPath = null;
+  let tvPath: string | null = null;
   const candidates = pathMap[platform] || pathMap.linux;
   for (const p of candidates) {
     if (p && existsSync(p)) { tvPath = p; break; }
@@ -259,7 +259,7 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
 
   const child = spawn(tvPath, [`--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore' });
   // Without a listener, a spawn failure (EACCES, missing binary) is an uncaught 'error' that kills the server.
-  let spawnError: Error | null = null;
+  let spawnError = null as Error | null;
   child.once('error', (err) => { spawnError = err; });
   child.unref();
 

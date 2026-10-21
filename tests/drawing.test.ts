@@ -16,9 +16,9 @@ import {
   clearAll,
 } from '../src/core/drawing.js';
 
-function makeDeps(evalImpl?: any) {
-  const calls = [];
-  const evaluate = async (expr) => {
+function makeDeps(evalImpl?: (expr: string, index: number) => unknown) {
+  const calls: string[] = [];
+  const evaluate = async (expr: string) => {
     calls.push(expr);
     return evalImpl ? evalImpl(expr, calls.length - 1) : undefined;
   };
@@ -157,7 +157,7 @@ describe('drawShape() — sanity', () => {
 
   it('throws a clear message when point is missing', async () => {
     await assert.rejects(
-      drawShape({ shape: 'horizontal_line', _deps: fastDeps(() => []) }),
+      drawShape({ shape: 'horizontal_line', _deps: fastDeps(() => []) } as unknown as Parameters<typeof drawShape>[0]),
       /point is required/,
     );
   });
@@ -219,7 +219,7 @@ describe('drawShape() points and lock', () => {
     assert.ok(ok.calls.find(c => c.includes('createMultipointShape'))!.includes('lock: true'));
     const bad = await drawShape({ shape: 'trend_line', point: p(1, 1), lock: true, _deps: drawDeps(false)._deps });
     assert.equal(bad.success, false);
-    assert.match(bad.error, /not locked/);
+    assert.match(bad.error ?? '', /not locked/);
   });
 });
 

@@ -8,7 +8,7 @@ export function registerUiTools(server: McpServer) {
     name: 'ui_click',
     description: 'Click a UI element by aria-label, data-name, text content, or class substring',
     inputSchema: {
-      by: z.enum(['aria-label', 'data-name', 'text', 'class-contains']).describe('Selector strategy'),
+      by: z.enum(core.SELECTOR_STRATEGIES).describe('Selector strategy'),
       value: z.string().describe('Value to match against the chosen selector strategy'),
     },
     annotations: DESTRUCTIVE,
@@ -19,8 +19,8 @@ export function registerUiTools(server: McpServer) {
     name: 'ui_open_panel',
     description: 'Open, close, or toggle TradingView panels (pine-editor, strategy-tester, watchlist, alerts, trading)',
     inputSchema: {
-      panel: z.enum(['pine-editor', 'strategy-tester', 'watchlist', 'alerts', 'trading']).describe('Panel name'),
-      action: z.enum(['open', 'close', 'toggle']).describe('Action to perform'),
+      panel: z.enum(core.PANELS).describe('Panel name'),
+      action: z.enum(core.PANEL_ACTIONS).describe('Action to perform'),
     },
     annotations: WRITE,
     run: ({ panel, action }) => core.openPanel({ panel, action }),
@@ -75,7 +75,7 @@ export function registerUiTools(server: McpServer) {
     name: 'ui_hover',
     description: 'Hover over a UI element by aria-label, data-name, or text content',
     inputSchema: {
-      by: z.enum(['aria-label', 'data-name', 'text', 'class-contains']).describe('Selector strategy'),
+      by: z.enum(core.SELECTOR_STRATEGIES).describe('Selector strategy'),
       value: z.string().describe('Value to match'),
     },
     annotations: WRITE,
@@ -86,7 +86,7 @@ export function registerUiTools(server: McpServer) {
     name: 'ui_scroll',
     description: 'Scroll the chart or page up/down/left/right',
     inputSchema: {
-      direction: z.enum(['up', 'down', 'left', 'right']).describe('Scroll direction'),
+      direction: z.enum(core.SCROLL_DIRECTIONS).describe('Scroll direction'),
       amount: z.coerce.number().optional().describe('Scroll amount in pixels (default 300)'),
     },
     annotations: WRITE,
@@ -111,7 +111,7 @@ export function registerUiTools(server: McpServer) {
     description: 'Find UI elements by text, aria-label, or CSS selector and return their positions',
     inputSchema: {
       query: z.string().describe('Text content, aria-label value, or CSS selector to search for'),
-      strategy: z.enum(['text', 'aria-label', 'css']).optional().describe('Search strategy (default: text)'),
+      strategy: z.enum(core.FIND_STRATEGIES).optional().describe('Search strategy (default: text)'),
     },
     annotations: READ_ONLY,
     run: ({ query, strategy }) => core.findElement({ query, strategy }),

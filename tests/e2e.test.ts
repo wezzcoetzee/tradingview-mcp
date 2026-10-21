@@ -22,15 +22,20 @@
 import { describe, it, beforeAll as before, afterAll as after } from 'bun:test';
 import assert from 'node:assert/strict';
 import CDP from 'chrome-remote-interface';
+import type { Client } from 'chrome-remote-interface';
 
-let client;
-let Runtime;
-let Input;
-let Page;
+
+let client: Client | undefined;
+let Runtime: Client['Runtime'] & { evaluate: (params: Record<string, unknown>) => Promise<{ result: { subtype?: string; description?: string; value?: PageValue } }> };
+let Input: Client['Input'];
+let Page: Client['Page'];
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-async function evaluate(expr) {
+/** Untyped JSON from the live page; shapes are asserted by each test. */
+type PageValue = ReturnType<typeof JSON.parse>;
+
+async function evaluate(expr: string): Promise<PageValue> {
   const { result } = await Runtime.evaluate({
     expression: expr,
     returnByValue: true,
@@ -40,7 +45,7 @@ async function evaluate(expr) {
   return result.value;
 }
 
-async function apiExists(path) {
+async function apiExists(path: string) {
   try {
     return await evaluate(`(function() { try { return ${path} != null; } catch(e) { return false; } })()`);
   } catch { return false; }
@@ -52,12 +57,12 @@ const BOTTOM_BAR = 'window.TradingView.bottomWidgetBar';
 const REPLAY_API = 'window.TradingViewApi._replayApi';
 
 /** Unwrap TradingView WatchedValue objects */
-function wv(path) {
+function wv(path: string) {
   return `(function(){ var v = ${path}; return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; })()`;
 }
 
 /** Sleep for ms */
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -69,14 +74,14 @@ describe.skipIf(!tvReachable)('TradingView MCP — Full E2E (70 tools)', () => {
   before(async () => {
     try {
       const targets = await CDP.List({ host: 'localhost', port: 9222 });
-      const chartTarget = targets.find(t => t.url && t.url.includes('tradingview.com/chart'));
+      const chartTarget = targets.find((t) => t.url && t.url.includes('tradingview.com/chart'));
       if (!chartTarget) throw new Error('No TradingView chart target found');
 
       client = await CDP({ host: 'localhost', port: 9222, target: chartTarget.id });
       await client.Runtime.enable();
       await client.Page.enable();
       await client.DOM.enable();
-      Runtime = client.Runtime;
+      Runtime = client.Runtime as typeof Runtime;
       Input = client.Input;
       Page = client.Page;
     } catch (err) {
@@ -157,9 +162,9 @@ describe.skipIf(!tvReachable)('TradingView MCP — Full E2E (70 tools)', () => {
   // ─── 2. CHART CONTROL (8 tools) ──────────────────────────────────────
 
   describe('Chart Control', () => {
-    let originalSymbol;
-    let originalTF;
-    let originalType;
+    let originalSymbol: PageValue;
+    let originalTF: PageValue;
+    let originalType: PageValue;
 
     before(async () => {
       originalSymbol = await evaluate(`${CHART_API}.symbol()`);
@@ -223,7 +228,7 @@ describe.skipIf(!tvReachable)('TradingView MCP — Full E2E (70 tools)', () => {
       await evaluate(`${CHART_API}.createStudy('Volume', false, false, [])`);
       await sleep(1500);
       const after = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
-      const newIds = after.filter(id => !before.includes(id));
+      const newIds = after.filter((id: string) => !before.includes(id));
       assert.ok(newIds.length > 0, 'Volume study added');
       // Clean up: remove it
       for (const id of newIds) {
@@ -236,7 +241,7 @@ describe.skipIf(!tvReachable)('TradingView MCP — Full E2E (70 tools)', () => {
       await evaluate(`${CHART_API}.createStudy('Volume', false, false, [])`);
       await sleep(1500);
       const after = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
-      const newIds = after.filter(id => !before.includes(id));
+      const newIds = after.filter((id: string) => !before.includes(id));
       assert.ok(newIds.length > 0, 'Study added');
 
       for (const id of newIds) {
@@ -993,7 +998,7 @@ val = array.get(a, 5)`;
       const id = shapes[0].id;
       await evaluate(`${CHART_API}.removeEntity('${id}')`);
       const after = await evaluate(`${CHART_API}.getAllShapes()`);
-      const stillExists = after.some(s => s.id === id);
+      const stillExists = after.some((s: { id: string }) => s.id === id);
       assert.ok(!stillExists, 'Shape removed');
     });
 

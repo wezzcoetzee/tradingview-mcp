@@ -3,9 +3,9 @@
  * Uses TradingView's internal widget API with DOM fallback.
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
-import { sleep } from './_page.js';
+import { sleep, type WithDeps } from './_page.js';
 
-export async function get({ _deps }: any = {}) {
+export async function get({ _deps }: WithDeps = {}) {
   // Try internal API first — reads from the active watchlist widget
   const symbols = await (_deps?.evaluate || evaluate)(`
     (function() {

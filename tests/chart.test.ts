@@ -24,7 +24,7 @@ describe('setSymbol / setTimeframe', () => {
   it('reject an empty value before touching the chart, since waiting on "" would pass trivially', async () => {
     const { _deps, calls } = deps();
     await assert.rejects(setTimeframe({ timeframe: ' ', _deps }), /timeframe is required/);
-    await assert.rejects(setSymbol({ _deps }), /symbol is required/);
+    await assert.rejects(setSymbol({ _deps } as unknown as Parameters<typeof setSymbol>[0]), /symbol is required/);
     assert.equal(calls.length, 0);
   });
 
@@ -59,7 +59,7 @@ describe('manageIndicator', () => {
     const { _deps } = deps((expr) => (expr.includes('getAllStudies') ? ['a'] : undefined));
     const result = await manageIndicator({ action: 'remove', entity_id: 'a', _deps });
     assert.equal(result.success, false);
-    assert.match(result.error, /still on the chart/);
+    assert.match(result.error ?? '', /still on the chart/);
   });
 
   it('add surfaces the createStudy error', async () => {
@@ -80,7 +80,7 @@ describe('manageIndicator', () => {
     const result = await manageIndicator({ action: 'add', indicator: 'RSI', inputs: '{"len": 5}', _deps });
     assert.equal(result.success, false);
     assert.equal(result.entity_id, 'new');
-    assert.match(result.inputs_error, /No inputs were updated/);
+    assert.match(result.inputs_error ?? '', /No inputs were updated/);
   });
 
   it('rejects malformed inputs JSON with a clear message', async () => {

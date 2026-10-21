@@ -1,4 +1,4 @@
-import { register } from '../router.js';
+import { register, command } from '../router.js';
 import * as core from '../../core/data.js';
 
 register('quote', {
@@ -25,16 +25,16 @@ register('values', {
 
 register('data', {
   description: 'Advanced data tools (lines, labels, tables, boxes, strategy, trades, equity, depth)',
-  subcommands: new Map<string, any>([
-    ['lines', {
+  subcommands: new Map([
+    ['lines', command({
       description: 'Get Pine Script line.new() price levels',
       options: {
         filter: { type: 'string', short: 'f', description: 'Filter by study name substring' },
         verbose: { type: 'boolean', short: 'v', description: 'Include raw line data' },
       },
       handler: (opts) => core.getPineLines({ study_filter: opts.filter, verbose: opts.verbose }),
-    }],
-    ['labels', {
+    })],
+    ['labels', command({
       description: 'Get Pine Script label.new() annotations',
       options: {
         filter: { type: 'string', short: 'f', description: 'Filter by study name substring' },
@@ -42,48 +42,48 @@ register('data', {
         verbose: { type: 'boolean', short: 'v', description: 'Include raw label data' },
       },
       handler: (opts) => core.getPineLabels({ study_filter: opts.filter, max_labels: opts.max ? Number(opts.max) : undefined, verbose: opts.verbose }),
-    }],
-    ['tables', {
+    })],
+    ['tables', command({
       description: 'Get Pine Script table.new() data',
       options: {
         filter: { type: 'string', short: 'f', description: 'Filter by study name substring' },
       },
       handler: (opts) => core.getPineTables({ study_filter: opts.filter }),
-    }],
-    ['boxes', {
+    })],
+    ['boxes', command({
       description: 'Get Pine Script box.new() price zones',
       options: {
         filter: { type: 'string', short: 'f', description: 'Filter by study name substring' },
         verbose: { type: 'boolean', short: 'v', description: 'Include raw box data' },
       },
       handler: (opts) => core.getPineBoxes({ study_filter: opts.filter, verbose: opts.verbose }),
-    }],
-    ['strategy', {
+    })],
+    ['strategy', command({
       description: 'Get strategy performance metrics',
       handler: () => core.getStrategyResults(),
-    }],
-    ['trades', {
+    })],
+    ['trades', command({
       description: 'Get strategy trade list',
       options: {
         max: { type: 'string', short: 'n', description: 'Max trades to return' },
         offset: { type: 'string', short: 'o', description: 'First trade index from the oldest (default: latest trades)' },
       },
       handler: (opts) => core.getTrades({ max_trades: opts.max ? Number(opts.max) : undefined, offset: opts.offset ? Number(opts.offset) : undefined }),
-    }],
-    ['equity', {
+    })],
+    ['equity', command({
       description: 'Get strategy equity curve',
       handler: () => core.getEquity(),
-    }],
-    ['depth', {
+    })],
+    ['depth', command({
       description: 'Get order book / DOM data',
       handler: () => core.getDepth(),
-    }],
-    ['indicator', {
+    })],
+    ['indicator', command({
       description: 'Get indicator info and inputs by entity ID',
       handler: (opts, positionals) => {
         if (!positionals[0]) throw new Error('Entity ID required. Usage: tv data indicator eFu1Ot');
         return core.getIndicator({ entity_id: positionals[0] });
       },
-    }],
+    })],
   ]),
 });

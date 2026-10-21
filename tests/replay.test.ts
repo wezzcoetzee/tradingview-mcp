@@ -17,8 +17,8 @@ import { start, step, jump, autoplay, stop, trade, status, parseReplayDate, VALI
  */
 function mockEvaluate(responses: any = {}, sequence?: any) {
   let callIdx = 0;
-  const calls = [];
-  const fn = async (expr) => {
+  const calls: string[] = [];
+  const fn = async (expr: string) => {
     calls.push(expr);
     if (sequence && callIdx < sequence.length) return sequence[callIdx++];
     for (const [key, val] of Object.entries(responses)) {
@@ -114,7 +114,7 @@ describe('start() — date selection and polling', () => {
 
   it('polls until isReplayStarted AND currentDate are set', async () => {
     let pollCount = 0;
-    const evaluate = async (expr) => {
+    const evaluate = async (expr: string) => {
       if (expr.includes('isReplayAvailable')) return true;
       if (expr.includes('showReplayToolbar') || expr.includes('selectDate')) return 'ok';
       if (expr.includes('isReplayStarted')) {
@@ -126,7 +126,7 @@ describe('start() — date selection and polling', () => {
       }
       return undefined;
     };
-    evaluate.calls = [];
+    evaluate.calls = [] as string[];
     const result = await start({ date: '2026-01-01', _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } });
     assert.equal(result.success, true);
     assert.equal(result.current_date, 1700000000);
@@ -135,7 +135,7 @@ describe('start() — date selection and polling', () => {
 
   it('throws and stops replay when polling times out (never started)', async () => {
     let stopCalled = false;
-    const evaluate = async (expr) => {
+    const evaluate = async (expr: string) => {
       if (expr.includes('isReplayAvailable')) return true;
       if (expr.includes('showReplayToolbar') || expr.includes('selectDate')) return 'ok';
       if (expr.includes('isReplayStarted')) return false; // never starts
@@ -143,7 +143,7 @@ describe('start() — date selection and polling', () => {
       if (expr.includes('stopReplay')) { stopCalled = true; return undefined; }
       return undefined;
     };
-    evaluate.calls = [];
+    evaluate.calls = [] as string[];
     await assert.rejects(
       () => start({ date: '2026-01-01', _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } }),
       (err) => {
@@ -189,7 +189,7 @@ describe('step() — doStep and polling', () => {
     const { _deps } = livePage({ stepsMove: false });
     const result = await step({ count: 3, _deps });
     assert.equal(result.success, false);
-    assert.match(result.error, /did not advance/);
+    assert.match(result.error ?? '', /did not advance/);
     assert.equal(result.advanced, 0);
     assert.equal(result.current_date, 1000);
   });
@@ -315,7 +315,7 @@ describe('autoplay() — delay validation', () => {
     };
     const result = await autoplay({ enabled: true, _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } });
     assert.equal(result.success, false);
-    assert.match(result.error, /did not turn on/);
+    assert.match(result.error ?? '', /did not turn on/);
   });
 
   it('throws when replay not started', async () => {
@@ -342,7 +342,7 @@ describe('stop()', () => {
     const { _deps } = livePage({ stops: false });
     const result = await stop({ _deps });
     assert.equal(result.success, false);
-    assert.match(result.error, /still running/);
+    assert.match(result.error ?? '', /still running/);
   });
 
   it('returns already_stopped when not started', async () => {
@@ -387,13 +387,13 @@ describe('trade()', () => {
   it('fails when the position never changes after an order', async () => {
     const result = await trade({ action: 'buy', _deps: fillingDeps(0, 0) });
     assert.equal(result.success, false);
-    assert.match(result.error, /did not settle/);
+    assert.match(result.error ?? '', /did not settle/);
   });
 
   it('throws on invalid action', async () => {
     const { _deps } = mockDeps({ 'isReplayStarted': true });
     await assert.rejects(
-      () => trade({ action: 'hold', _deps }),
+      () => trade({ action: 'hold' as unknown as 'buy', _deps }),
       (err: any) => err.message.includes('Invalid action'),
     );
   });
@@ -411,8 +411,8 @@ describe('trade()', () => {
 
 describe('status()', () => {
   it('returns full status object', async () => {
-    const calls = [];
-    const evaluate = async (expr) => {
+    const calls: string[] = [];
+    const evaluate = async (expr: string) => {
       calls.push(expr);
       return {
         is_replay_available: true,

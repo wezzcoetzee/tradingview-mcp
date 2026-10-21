@@ -8,11 +8,26 @@ import { parseArgs } from 'node:util';
 type OptionSpec = { type: 'string' | 'boolean'; short?: string; description?: string };
 type OptionMap = Record<string, OptionSpec>;
 
-/** @type {Map<string, { description: string, options?: object, handler: Function, subcommands?: Map<string, object> }>} */
-const commands = new Map();
+/** Parsed flag values, inferred from the command's option specs: boolean flags are booleans, the rest strings. */
+type Values<O extends OptionMap> = { -readonly [K in keyof O]?: { string: string; boolean: boolean }[O[K]['type']] };
 
-export function register(name, config) {
-  commands.set(name, config);
+type Command<O extends OptionMap = OptionMap> = {
+  description: string;
+  options?: O;
+  // Method syntax keeps handler parameters bivariant so typed commands fit in the erased registry.
+  handler?(values: Values<O>, positionals: string[]): unknown;
+  subcommands?: Map<string, Command>;
+};
+
+const commands = new Map<string, Command>();
+
+/** Defines a command whose handler infers its flag types from `options`. */
+export function command<const O extends OptionMap = Record<never, never>>(config: Command<O>): Command {
+  return config as Command;
+}
+
+export function register<const O extends OptionMap = Record<never, never>>(name: string, config: Command<O>) {
+  commands.set(name, command(config));
 }
 
 /** Parses a `true`/`false` value for a flag that takes a value, e.g. `--visible false`. */
@@ -29,6 +44,13 @@ export function parseNumber(value: string | undefined, flag: string): number {
     throw new Error(`--${flag} must be a number`);
   }
   return Number(value);
+}
+
+/** Narrows a CLI string to one of the allowed values, failing with the list of valid ones. */
+export function parseChoice<const T extends readonly string[]>(value: string, choices: T, label: string): T[number] {
+  const match = choices.find(choice => choice === value);
+  if (match === undefined) throw new Error(`Invalid ${label} "${value}". Use: ${choices.join(', ')}`);
+  return match;
 }
 
 function flagLabel(name: string, spec: OptionSpec): string {
@@ -61,7 +83,7 @@ function printHelp() {
   console.log('  Use subject to TradingView\'s Terms of Use: tradingview.com/policies');
 }
 
-function printCommandHelp(name: string, cmd) {
+function printCommandHelp(name: string, cmd: Command) {
   if (cmd.subcommands) {
     console.log(`Usage: tv ${name} <subcommand> [options]\n`);
     console.log('Subcommands:');
@@ -91,7 +113,7 @@ function parseCommandArgs(args: string[], options: OptionMap) {
   }
 }
 
-export async function run(argv) {
+export async function run(argv: string[]) {
   const args = argv.slice(2);
 
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
@@ -136,15 +158,15 @@ export async function run(argv) {
       printCommandHelp(name, target);
       process.exit(0);
     }
-    await execute(target.handler, values, positionals);
+    await execute(target, values, positionals);
   } catch (err) {
     handleError(err);
   }
 }
 
-async function execute(handler, values, positionals) {
+async function execute(target: Command, values: Values<OptionMap>, positionals: string[]) {
   try {
-    const result = await handler(values, positionals);
+    const result = await target.handler?.(values, positionals);
     console.log(JSON.stringify(result, null, 2));
     process.exit(0);
   } catch (err) {
@@ -152,8 +174,8 @@ async function execute(handler, values, positionals) {
   }
 }
 
-function handleError(err) {
-  const message = err.message || String(err);
+function handleError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
   // Connection failures get exit code 2
   if (/CDP|connection|ECONNREFUSED|not running/i.test(message)) {
     console.error(JSON.stringify({ success: false, error: message }, null, 2));

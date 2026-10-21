@@ -2,17 +2,34 @@
  * Core drawing logic.
  */
 import { evaluate as _evaluate, getChartApi as _getChartApi, safeString, requireFinite } from '../connection.js';
+import type { CoreDeps, WithDeps } from './_page.js';
 import { waitFor } from '../wait.js';
 import { parseJsonObject } from './json.js';
 
-function _resolve(deps) {
+export interface DrawingDeps extends CoreDeps {
+  getChartApi?: typeof _getChartApi;
+}
+
+function _resolve(deps?: DrawingDeps) {
   const evaluate = deps?.evaluate || _evaluate;
   return { evaluate, getChartApi: deps?.getChartApi || _getChartApi, waitOpts: { evaluate, ...deps?.waitOpts } };
 }
 
-interface ChartPoint { time: number; price: number }
+export interface ChartPoint { time: number; price: number }
 
-export async function drawShape({ shape, point, point2, more_points, lock, overrides: overridesRaw, text, _deps }: any = {}) {
+export interface DrawShapeParams extends WithDeps<DrawingDeps> {
+  shape: string;
+  /** Times are unix seconds. */
+  point: ChartPoint;
+  point2?: ChartPoint;
+  more_points?: ChartPoint[];
+  lock?: boolean;
+  /** Style overrides, as an object or a JSON string. */
+  overrides?: Record<string, unknown> | string;
+  text?: string;
+}
+
+export async function drawShape({ shape, point, point2, more_points, lock, overrides: overridesRaw, text, _deps }: DrawShapeParams) {
   const { evaluate, getChartApi, waitOpts } = _resolve(_deps);
   const overrides = overridesRaw ? parseJsonObject(overridesRaw, 'overrides') : {};
   if (!point || typeof point !== 'object') {
@@ -53,7 +70,7 @@ export async function drawShape({ shape, point, point2, more_points, lock, overr
   return { success: true, shape, entity_id: newId, locked: true };
 }
 
-export async function listDrawings({ _deps }: any = {}) {
+export async function listDrawings({ _deps }: WithDeps<DrawingDeps> = {}) {
   const { evaluate, getChartApi } = _resolve(_deps);
   const apiPath = await getChartApi();
   const shapes = await evaluate(`
@@ -70,7 +87,15 @@ export async function listDrawings({ _deps }: any = {}) {
   return { success: true, count: shapes?.length || 0, shapes: shapes || [] };
 }
 
-export async function getProperties({ entity_id, verbose, _deps }: any = {}) {
+export interface EntityParams extends WithDeps<DrawingDeps> {
+  entity_id: string;
+}
+
+export interface GetPropertiesParams extends EntityParams {
+  verbose?: boolean;
+}
+
+export async function getProperties({ entity_id, verbose, _deps }: GetPropertiesParams) {
   const { evaluate, getChartApi } = _resolve(_deps);
   const apiPath = await getChartApi();
   const result = await evaluate(`
@@ -99,7 +124,7 @@ export async function getProperties({ entity_id, verbose, _deps }: any = {}) {
   return { success: true, ...result };
 }
 
-export async function removeOne({ entity_id, _deps }: any = {}) {
+export async function removeOne({ entity_id, _deps }: EntityParams) {
   const { evaluate, getChartApi } = _resolve(_deps);
   const apiPath = await getChartApi();
   const result = await evaluate(`
@@ -124,7 +149,7 @@ export async function removeOne({ entity_id, _deps }: any = {}) {
   return { success: true, entity_id: result.entity_id, removed: true, remaining_shapes: result.remaining_shapes };
 }
 
-export async function clearAll({ _deps }: any = {}) {
+export async function clearAll({ _deps }: WithDeps<DrawingDeps> = {}) {
   const { evaluate, getChartApi } = _resolve(_deps);
   const apiPath = await getChartApi();
   await evaluate(`${apiPath}.removeAllShapes()`);

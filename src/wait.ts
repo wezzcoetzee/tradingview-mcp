@@ -6,7 +6,7 @@ const POLL_INTERVAL = 200;
 export interface WaitOptions {
   timeout?: number;
   interval?: number;
-  evaluate?: (expression: string) => Promise<any>;
+  evaluate?: typeof _evaluate;
 }
 
 export interface WaitResult<T> {

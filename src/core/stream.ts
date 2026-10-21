@@ -3,6 +3,7 @@
  * Uses efficient poll + dedup: only emits when data changes.
  */
 import { evaluate } from '../connection.js';
+import { errorMessage } from '../debug.js';
 import { readGraphics, horizontalLevels, tableRows } from './data.js';
 
 const CHART_API = 'window.TradingViewApi._activeChartWidgetWV.value()';
@@ -21,8 +22,26 @@ export function backoffMs(consecutiveErrors: number, interval: number) {
   return Math.min(interval * 2 ** consecutiveErrors, MAX_BACKOFF_MS);
 }
 
-export async function pollLoop(fetcher, { interval = 500, dedupe = true, label = 'stream', signal, maxErrors = MAX_CONSECUTIVE_ERRORS }: any = {}) {
-  let lastHash = null;
+export interface PollLoopOptions {
+  interval?: number;
+  dedupe?: boolean;
+  label?: string;
+  signal?: AbortSignal;
+  maxErrors?: number;
+}
+
+export interface StreamParams {
+  /** Poll interval in milliseconds. */
+  interval?: number;
+}
+
+export interface StreamGraphicsParams extends StreamParams {
+  /** Case-insensitive substring of the study name. */
+  filter?: string;
+}
+
+export async function pollLoop(fetcher: () => Promise<object | null | undefined>, { interval = 500, dedupe = true, label = 'stream', signal, maxErrors = MAX_CONSECUTIVE_ERRORS }: PollLoopOptions = {}) {
+  let lastHash: string | null = null;
   const controller = new AbortController();
   const cleanup = () => controller.abort();
 
@@ -54,10 +73,10 @@ export async function pollLoop(fetcher, { interval = 500, dedupe = true, label =
       } catch (err) {
         consecutiveErrors++;
         if (consecutiveErrors >= maxErrors) {
-          process.stderr.write(`[stream:${label}] aborting after ${consecutiveErrors} consecutive errors: ${err.message}\n`);
+          process.stderr.write(`[stream:${label}] aborting after ${consecutiveErrors} consecutive errors: ${errorMessage(err)}\n`);
           break;
         }
-        process.stderr.write(`[stream:${label}] error (${consecutiveErrors}/${maxErrors}): ${err.message}\n`);
+        process.stderr.write(`[stream:${label}] error (${consecutiveErrors}/${maxErrors}): ${errorMessage(err)}\n`);
         await sleep(backoffMs(consecutiveErrors, interval), controller.signal);
         continue;
       }
@@ -103,7 +122,7 @@ async function fetchQuote() {
   `);
 }
 
-export async function streamQuote({ interval }: any = {}) {
+export async function streamQuote({ interval }: StreamParams = {}) {
   return pollLoop(fetchQuote, { interval: interval || 300, label: 'quote' });
 }
 
@@ -133,7 +152,7 @@ async function fetchLastBar() {
   `);
 }
 
-export async function streamBars({ interval }: any = {}) {
+export async function streamBars({ interval }: StreamParams = {}) {
   return pollLoop(fetchLastBar, { interval: interval || 500, label: 'bars' });
 }
 
@@ -167,7 +186,7 @@ async function fetchValues() {
   `);
 }
 
-export async function streamValues({ interval }: any = {}) {
+export async function streamValues({ interval }: StreamParams = {}) {
   return pollLoop(fetchValues, { interval: interval || 500, label: 'values' });
 }
 
@@ -181,7 +200,7 @@ async function fetchGraphics<T>(collection: string, mapKey: string, filter: stri
   return { symbol, study_count: entries.length, studies: entries };
 }
 
-export async function streamLines({ interval, filter }: any = {}) {
+export async function streamLines({ interval, filter }: StreamGraphicsParams = {}) {
   const fetchLines = () => fetchGraphics('dwglines', 'lines', filter, (s) => {
     const levels = horizontalLevels(s.items);
     return levels.length > 0 ? { study: s.name, levels } : null;
@@ -189,7 +208,7 @@ export async function streamLines({ interval, filter }: any = {}) {
   return pollLoop(fetchLines, { interval: interval || 1000, label: 'lines' });
 }
 
-export async function streamLabels({ interval, filter }: any = {}) {
+export async function streamLabels({ interval, filter }: StreamGraphicsParams = {}) {
   const fetchLabels = () => fetchGraphics('dwglabels', 'labels', filter, (s) => {
     const labels = s.items
       .map(({ raw: v }) => ({ text: v.t || '', price: v.y ?? null }))
@@ -200,7 +219,7 @@ export async function streamLabels({ interval, filter }: any = {}) {
   return pollLoop(fetchLabels, { interval: interval || 1000, label: 'labels' });
 }
 
-export async function streamTables({ interval, filter }: any = {}) {
+export async function streamTables({ interval, filter }: StreamGraphicsParams = {}) {
   const fetchTables = () => fetchGraphics('dwgtablecells', 'tableCells', filter, (s) => {
     const tables = tableRows(s.items);
     return tables.length > 0 ? { study: s.name, tables } : null;
@@ -250,6 +269,6 @@ async function fetchAllPanes() {
   `);
 }
 
-export async function streamAllPanes({ interval }: any = {}) {
+export async function streamAllPanes({ interval }: StreamParams = {}) {
   return pollLoop(fetchAllPanes, { interval: interval || 500, label: 'all-panes' });
 }

@@ -30,6 +30,7 @@ import { run } from './router.js';
 try {
   await run(process.argv);
 } catch (err) {
-  process.stderr.write(`${err.message}\n`);
-  process.exit(/CDP|ECONNREFUSED|chart target/i.test(err.message) ? 2 : 1);
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`${message}\n`);
+  process.exit(/CDP|ECONNREFUSED|chart target/i.test(message) ? 2 : 1);
 }
