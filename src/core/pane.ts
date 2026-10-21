@@ -2,25 +2,21 @@
  * Core pane/layout management logic.
  * Controls multi-chart layouts (split panes) in TradingView.
  */
-import { evaluate as _evaluate, evaluateAsync, getClient, safeString, requireText } from '../connection.js';
+import { evaluateAsync, safeString, requireText } from '../connection.js';
 import { waitFor, symbolMatches } from '../wait.js';
+import { CHART_API, resolveDeps as _resolve } from './_page.js';
 
 const CWC = 'window.TradingViewApi._chartWidgetCollection';
 
 /** Index of the active pane in the collection, or -1 when none matches. */
 const ACTIVE_PANE_INDEX = `(function() {
-  var active = window.TradingViewApi._activeChartWidgetWV.value();
+  var active = ${CHART_API};
   var all = ${CWC}.getAll();
   for (var i = 0; i < all.length; i++) {
     if (active._chartWidget && all[i] === active._chartWidget) return i;
   }
   return -1;
 })()`;
-
-function _resolve(deps) {
-  const evaluate = deps?.evaluate || _evaluate;
-  return { evaluate, waitOpts: { evaluate, ...deps?.waitOpts } };
-}
 
 const LAYOUT_ALIASES = {
   'single': 's', '1': 's', '1x1': 's',
@@ -174,7 +170,7 @@ export async function setSymbol({ index, symbol: raw, _deps }: any = {}) {
   const focused = await focus({ index: idx, _deps });
   if (!focused.success) return { ...focused, index: idx };
 
-  await evaluate(`window.TradingViewApi._activeChartWidgetWV.value().setSymbol(${safeString(symbol)}, {})`);
+  await evaluate(`${CHART_API}.setSymbol(${safeString(symbol)}, {})`);
 
   const { ok, value } = await waitFor<string>(
     `${CWC}.getAll()[${idx}].model().mainSeries().symbol()`,

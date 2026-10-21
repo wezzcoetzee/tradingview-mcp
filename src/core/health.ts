@@ -1,9 +1,10 @@
 /**
  * Core health/discovery/launch logic.
  */
-import { getClient, getTargetInfo, evaluate, cdpFetch, cdpBaseUrl, getCdpPort, parseCdpPort, setCdpPort } from '../connection.js';
+import { getClient, getTargetInfo, evaluate, KNOWN_PATHS, cdpFetch, cdpBaseUrl, getCdpPort, parseCdpPort, setCdpPort } from '../connection.js';
 import { existsSync } from 'fs';
 import { execFileSync, execSync, spawn } from 'child_process';
+import { sleep, UNWRAP_FN } from './_page.js';
 
 export async function healthCheck() {
   await getClient();
@@ -50,33 +51,33 @@ export async function discover() {
         var chart = window.TradingViewApi._activeChartWidgetWV.value();
         var methods = [];
         for (var k in chart) { if (typeof chart[k] === 'function') methods.push(k); }
-        results.chartApi = { available: true, path: 'window.TradingViewApi._activeChartWidgetWV.value()', methodCount: methods.length, methods: methods.slice(0, 50) };
+        results.chartApi = { available: true, path: '${KNOWN_PATHS.chartApi}', methodCount: methods.length, methods: methods.slice(0, 50) };
       } catch(e) { results.chartApi = { available: false, error: e.message }; }
       try {
         var col = window.TradingViewApi._chartWidgetCollection;
         var colMethods = [];
         for (var k in col) { if (typeof col[k] === 'function') colMethods.push(k); }
-        results.chartWidgetCollection = { available: !!col, path: 'window.TradingViewApi._chartWidgetCollection', methodCount: colMethods.length, methods: colMethods.slice(0, 30) };
+        results.chartWidgetCollection = { available: !!col, path: '${KNOWN_PATHS.chartWidgetCollection}', methodCount: colMethods.length, methods: colMethods.slice(0, 30) };
       } catch(e) { results.chartWidgetCollection = { available: false, error: e.message }; }
       try {
         var ws = window.ChartApiInstance;
         var wsMethods = [];
         for (var k in ws) { if (typeof ws[k] === 'function') wsMethods.push(k); }
-        results.chartApiInstance = { available: !!ws, path: 'window.ChartApiInstance', methodCount: wsMethods.length, methods: wsMethods.slice(0, 30) };
+        results.chartApiInstance = { available: !!ws, path: '${KNOWN_PATHS.chartApiInstance}', methodCount: wsMethods.length, methods: wsMethods.slice(0, 30) };
       } catch(e) { results.chartApiInstance = { available: false, error: e.message }; }
       try {
         var bwb = window.TradingView && window.TradingView.bottomWidgetBar;
         var bwbMethods = [];
         if (bwb) { for (var k in bwb) { if (typeof bwb[k] === 'function') bwbMethods.push(k); } }
-        results.bottomWidgetBar = { available: !!bwb, path: 'window.TradingView.bottomWidgetBar', methodCount: bwbMethods.length, methods: bwbMethods.slice(0, 20) };
+        results.bottomWidgetBar = { available: !!bwb, path: '${KNOWN_PATHS.bottomWidgetBar}', methodCount: bwbMethods.length, methods: bwbMethods.slice(0, 20) };
       } catch(e) { results.bottomWidgetBar = { available: false, error: e.message }; }
       try {
         var replay = window.TradingViewApi._replayApi;
-        results.replayApi = { available: !!replay, path: 'window.TradingViewApi._replayApi' };
+        results.replayApi = { available: !!replay, path: '${KNOWN_PATHS.replayApi}' };
       } catch(e) { results.replayApi = { available: false, error: e.message }; }
       try {
         var alerts = window.TradingViewApi._alertService;
-        results.alertService = { available: !!alerts, path: 'window.TradingViewApi._alertService' };
+        results.alertService = { available: !!alerts, path: '${KNOWN_PATHS.alertService}' };
       } catch(e) { results.alertService = { available: false, error: e.message }; }
       return results;
     })()
@@ -149,7 +150,7 @@ export async function uiState() {
       } catch(e) { ui.chart = { error: e.message }; }
       try {
         var replay = window.TradingViewApi._replayApi;
-        function unwrap(v) { return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; }
+        ${UNWRAP_FN}
         ui.replay = { available: unwrap(replay.isReplayAvailable()), started: unwrap(replay.isReplayStarted()) };
       } catch(e) { ui.replay = { error: e.message }; }
       return ui;
@@ -252,7 +253,7 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
           try { process.kill(Number(pid), 'SIGTERM'); } catch {}
         }
       }
-      await new Promise(r => setTimeout(r, 1500));
+      await sleep(1500);
     } catch { /* may not be running */ }
   }
 
@@ -263,7 +264,7 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
   child.unref();
 
   for (let i = 0; i < 15; i++) {
-    await new Promise(r => setTimeout(r, 1000));
+    await sleep(1000);
     if (spawnError) throw new Error(`Failed to start TradingView (${tvPath}): ${spawnError.message}`);
     const info = await probeCdp(cdpPort);
     if (info) {

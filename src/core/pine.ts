@@ -5,6 +5,7 @@
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
 import { waitFor, type WaitOptions } from '../wait.js';
+import { CHART_API, sleep } from './_page.js';
 
 /** CDP modifier bitmask for the platform's shortcut key: Cmd (4) on macOS, Ctrl (2) elsewhere. */
 export function shortcutModifier(platform: NodeJS.Platform): 2 | 4 {
@@ -91,7 +92,7 @@ export async function ensurePineEditorOpen() {
   `);
 
   for (let i = 0; i < 50; i++) {
-    await new Promise(r => setTimeout(r, 200));
+    await sleep(200);
     const ready = await evaluate(`(function() { return ${FIND_MONACO} !== null; })()`);
     if (ready) return true;
   }
@@ -356,19 +357,23 @@ async function assertSafeToReplace(replaceCurrent: boolean | undefined, action: 
   }
 }
 
+/** Replace the editor contents; false when Monaco is not found. */
+async function setEditorValue(text: string): Promise<boolean> {
+  return evaluate(`
+    (function() {
+      var m = ${FIND_MONACO};
+      if (!m) return false;
+      m.editor.setValue(${JSON.stringify(text)});
+      return true;
+    })()
+  `);
+}
+
 export async function setSource({ source }: { source: string }) {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
-  const escaped = JSON.stringify(source);
-  const set = await evaluate(`
-    (function() {
-      var m = ${FIND_MONACO};
-      if (!m) return false;
-      m.editor.setValue(${escaped});
-      return true;
-    })()
-  `);
+  const set = await setEditorValue(source);
 
   if (!set) throw new Error('Monaco found but setValue() failed.');
   return { success: true, lines_set: source.split('\n').length, script_name: await readEditorTitle() };
@@ -401,7 +406,7 @@ const READ_MARKERS = `
 const READ_STUDY_COUNT = `
   (function() {
     try {
-      var chart = window.TradingViewApi._activeChartWidgetWV.value();
+      var chart = ${CHART_API};
       if (chart && typeof chart.getAllStudies === 'function') return chart.getAllStudies().length;
     } catch(e) {}
     return null;
@@ -432,46 +437,51 @@ function unconfirmedNote(timeoutMs = COMPILE_TIMEOUT_MS) {
   return `No change in editor markers or chart studies within ${timeoutMs / 1000}s, so this compile could not be confirmed. The markers shown may belong to the previous compile.`;
 }
 
+/** Prefix matches tolerate suffixes such as shortcut hints; "Save and add to chart" wins over a plain add. */
+const CLICK_COMPILE_BUTTON = `
+  (function() {
+    var btns = document.querySelectorAll('button');
+    var addBtn = null, updateBtn = null, saveBtn = null;
+    for (var i = 0; i < btns.length; i++) {
+      var text = btns[i].textContent.trim();
+      if (/save and add to chart/i.test(text)) {
+        btns[i].click();
+        return 'Save and add to chart';
+      }
+      if (!addBtn && /^add to chart/i.test(text)) addBtn = btns[i];
+      if (!updateBtn && /^update on chart/i.test(text)) updateBtn = btns[i];
+      if (!saveBtn && btns[i].className.indexOf('saveButton') !== -1 && btns[i].offsetParent !== null) saveBtn = btns[i];
+    }
+    if (addBtn) { addBtn.click(); return 'Add to chart'; }
+    if (updateBtn) { updateBtn.click(); return 'Update on chart'; }
+    if (saveBtn) { saveBtn.click(); return 'Pine Save'; }
+    return null;
+  })()
+`;
+
+/** Click the compile button, or press the compile shortcut when none is found. Returns what was used. */
+async function clickCompileButton(): Promise<string> {
+  const clicked = await evaluate(CLICK_COMPILE_BUTTON) as string | null;
+  if (clicked) return clicked;
+  const c = await getClient();
+  await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: MOD, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter' });
+  return 'keyboard_shortcut';
+}
+
 export async function compile() {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
   const before = await evaluate(COMPILE_SNAPSHOT) as CompileSnapshot;
 
-  const clicked = await evaluate(`
-    (function() {
-      var btns = document.querySelectorAll('button');
-      var fallback = null;
-      var saveBtn = null;
-      for (var i = 0; i < btns.length; i++) {
-        var text = btns[i].textContent.trim();
-        if (/save and add to chart/i.test(text)) {
-          btns[i].click();
-          return 'Save and add to chart';
-        }
-        if (!fallback && /^(Add to chart|Update on chart)/i.test(text)) {
-          fallback = btns[i];
-        }
-        if (!saveBtn && btns[i].className.indexOf('saveButton') !== -1 && btns[i].offsetParent !== null) {
-          saveBtn = btns[i];
-        }
-      }
-      if (fallback) { fallback.click(); return fallback.textContent.trim(); }
-      if (saveBtn) { saveBtn.click(); return 'Pine Save'; }
-      return null;
-    })()
-  `);
+  const clicked = await clickCompileButton();
 
-  if (!clicked) {
-    const c = await getClient();
-    await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: MOD, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter' });
-  }
 
   const { confirmed } = await awaitCompile(before);
   return {
     success: true,
-    button_clicked: clicked || 'keyboard_shortcut',
+    button_clicked: clicked,
     source: 'dom_fallback',
     compile_confirmed: confirmed,
     note: confirmed ? undefined : unconfirmedNote(),
@@ -493,7 +503,7 @@ export async function save() {
   const c = await getClient();
   await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: MOD, key: 's', code: 'KeyS', windowsVirtualKeyCode: 83 });
   await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 's', code: 'KeyS' });
-  await new Promise(r => setTimeout(r, 800));
+  await sleep(800);
 
   // Handle "Save Script" name dialog that appears for new/unsaved scripts
   const dialogHandled = await evaluate(`
@@ -606,41 +616,15 @@ export async function smartCompile() {
 
   const before = await evaluate(COMPILE_SNAPSHOT) as CompileSnapshot;
 
-  const buttonClicked = await evaluate(`
-    (function() {
-      var btns = document.querySelectorAll('button');
-      var addBtn = null;
-      var updateBtn = null;
-      var saveBtn = null;
-      for (var i = 0; i < btns.length; i++) {
-        var text = btns[i].textContent.trim();
-        if (/save and add to chart/i.test(text)) {
-          btns[i].click();
-          return 'Save and add to chart';
-        }
-        if (!addBtn && /^add to chart$/i.test(text)) addBtn = btns[i];
-        if (!updateBtn && /^update on chart$/i.test(text)) updateBtn = btns[i];
-        if (!saveBtn && btns[i].className.indexOf('saveButton') !== -1 && btns[i].offsetParent !== null) saveBtn = btns[i];
-      }
-      if (addBtn) { addBtn.click(); return 'Add to chart'; }
-      if (updateBtn) { updateBtn.click(); return 'Update on chart'; }
-      if (saveBtn) { saveBtn.click(); return 'Pine Save'; }
-      return null;
-    })()
-  `);
+  const buttonClicked = await clickCompileButton();
 
-  if (!buttonClicked) {
-    const c = await getClient();
-    await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: MOD, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter' });
-  }
 
   const { confirmed, after } = await awaitCompile(before);
   const studyAdded = before.studies !== null && after.studies !== null ? after.studies > before.studies : null;
 
   return {
     success: true,
-    button_clicked: buttonClicked || 'keyboard_shortcut',
+    button_clicked: buttonClicked,
     compile_confirmed: confirmed,
     ...summarizeMarkers(after.markers),
     study_added: studyAdded,
@@ -653,7 +637,6 @@ export async function newScript({ type, replace_current }: { type: 'indicator' |
   if (!editorReady) throw new Error('Could not open Pine Editor.');
   await assertSafeToReplace(replace_current, 'create a new script');
 
-  const typeMap = { indicator: 'indicator', strategy: 'strategy', library: 'library' };
   const templates = {
     indicator: '//@version=6\nindicator("My script")\nplot(close)',
     strategy: '//@version=6\nstrategy("My strategy", overlay=true)\n',
@@ -662,20 +645,11 @@ export async function newScript({ type, replace_current }: { type: 'indicator' |
 
   const template = templates[type] || templates.indicator;
 
-  // Simply set the source to a new template — this is the most reliable approach
-  const escaped = JSON.stringify(template);
-  const set = await evaluate(`
-    (function() {
-      var m = ${FIND_MONACO};
-      if (!m) return false;
-      m.editor.setValue(${escaped});
-      return true;
-    })()
-  `);
+  const set = await setEditorValue(template);
 
   if (!set) throw new Error('Monaco editor not found. Ensure Pine Editor is open.');
 
-  return { success: true, type, action: 'new_script_created', template: typeMap[type], script_name: parseScriptTitle(template) };
+  return { success: true, type, action: 'new_script_created', template: type, script_name: parseScriptTitle(template) };
 }
 
 export async function openScript({ name, replace_current }: { name: string; replace_current?: boolean }) {

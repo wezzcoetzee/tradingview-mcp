@@ -2,6 +2,7 @@
  * Core alert logic.
  */
 import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
+import { sleep } from './_page.js';
 
 interface AlertSummary { alert_id: string | number }
 
@@ -42,7 +43,7 @@ export async function create({ price, message }: { price: number; message?: stri
     await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'a', code: 'KeyA' });
   }
 
-  await new Promise(r => setTimeout(r, 1000));
+  await sleep(1000);
 
   const fill = await evaluate(`
     (function() {
@@ -87,7 +88,7 @@ export async function create({ price, message }: { price: number; message?: stri
     `);
   }
 
-  await new Promise(r => setTimeout(r, 500));
+  await sleep(500);
   const submitted = await evaluate(`
     (function() {
       var dialog = ${ALERT_DIALOG_JS};
@@ -109,7 +110,7 @@ export async function create({ price, message }: { price: number; message?: stri
   let after = before;
   let created: AlertSummary | undefined;
   for (let i = 0; i < 6 && !created; i++) {
-    await new Promise(r => setTimeout(r, 500));
+    await sleep(500);
     after = await list();
     created = findNewAlert(before.alerts, after.alerts);
   }

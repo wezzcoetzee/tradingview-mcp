@@ -3,6 +3,7 @@
  * Controls TradingView Desktop tabs via CDP and Electron keyboard shortcuts.
  */
 import { getClient, disconnect, setPreferredTargetId, getPreferredTargetId, listTargets, pickChartTarget, cdpFetch } from '../connection.js';
+import { sleep } from './_page.js';
 
 const TAB_CHANGE_TIMEOUT_MS = 5000;
 const POLL_INTERVAL_MS = 250;
@@ -35,7 +36,7 @@ async function waitForTabs(done: (tabs: TabList) => boolean): Promise<TabList> {
   const deadline = Date.now() + TAB_CHANGE_TIMEOUT_MS;
   let tabs = await list();
   while (!done(tabs) && Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+    await sleep(POLL_INTERVAL_MS);
     tabs = await list();
   }
   return tabs;

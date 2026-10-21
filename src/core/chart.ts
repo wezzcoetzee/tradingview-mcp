@@ -1,20 +1,10 @@
 /**
  * Core chart control logic.
  */
-import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, safeString, requireFinite, requireText } from '../connection.js';
-import { waitFor, waitForChartReady as _waitForChartReady } from '../wait.js';
+import { safeString, requireFinite, requireText } from '../connection.js';
+import { waitFor } from '../wait.js';
 import { parseJsonObject } from './json.js';
-
-const CHART_API = 'window.TradingViewApi._activeChartWidgetWV.value()';
-
-function _resolve(deps) {
-  return {
-    evaluate: deps?.evaluate || _evaluate,
-    evaluateAsync: deps?.evaluateAsync || _evaluateAsync,
-    waitForChartReady: deps?.waitForChartReady || _waitForChartReady,
-    waitOpts: { evaluate: deps?.evaluate || _evaluate, ...deps?.waitOpts },
-  };
-}
+import { CHART_API, resolveDeps as _resolve } from './_page.js';
 
 export async function getState({ _deps }: any = {}) {
   const { evaluate } = _resolve(_deps);
@@ -140,8 +130,9 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
   }
 }
 
-export async function getVisibleRange() {
-  const result = await _evaluate(`
+export async function getVisibleRange({ _deps }: any = {}) {
+  const { evaluate } = _resolve(_deps);
+  const result = await evaluate(`
     (function() {
       var chart = ${CHART_API};
       return { visible_range: chart.getVisibleRange(), bars_range: chart.getVisibleBarsRange() };
@@ -276,8 +267,9 @@ export async function scrollToDate({ date, _deps }: any = {}) {
   return { success: true, date, centered_on: timestamp, resolution, window: { from, to }, ...partialLoadFlag({ from, to }, zoom) };
 }
 
-export async function symbolInfo() {
-  const result = await _evaluate(`
+export async function symbolInfo({ _deps }: any = {}) {
+  const { evaluate } = _resolve(_deps);
+  const result = await evaluate(`
     (function() {
       var chart = ${CHART_API};
       var info = chart.symbolExt();
