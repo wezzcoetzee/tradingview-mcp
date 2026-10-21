@@ -434,3 +434,15 @@ By using this software, you acknowledge and agree that:
 MIT — see [LICENSE](LICENSE) for details.
 
 The MIT license applies to the source code of this project only. It does not grant any rights to TradingView's software, data, trademarks, or intellectual property.
+
+### Desktop lifecycle
+
+The first unreachable CDP connection attempts to launch TradingView once. Set
+`TV_MCP_AUTO_LAUNCH=0` to disable this behavior. An existing instance without CDP
+requires an explicit `tv_launch` call with `kill_existing: true` to restart it.
+On macOS, that restart uses the bundled launch script through LaunchServices.
+
+Use `tv_quit` to close TradingView after chart work. Set
+`only_if_agent_launched: true` to leave manually opened sessions alone, or
+`force: false` to avoid force-killing a process that resists graceful shutdown.
+A successful quit resets the auto-launch attempt for the next session.

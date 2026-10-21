@@ -1,9 +1,12 @@
 /**
  * Core health/discovery/launch logic.
  */
-import { getClient, getTargetInfo, evaluate, KNOWN_PATHS, cdpFetch, cdpBaseUrl, getCdpPort, parseCdpPort, setCdpPort } from '../connection.js';
+import { getClient, getTargetInfo, evaluate, KNOWN_PATHS, cdpFetch, cdpBaseUrl, getCdpPort, parseCdpPort, setCdpPort, disconnect, resetAutoLaunchLatch } from '../connection.js';
 import { existsSync } from 'fs';
-import { execFileSync, execSync, spawn } from 'child_process';
+import { execFile, execFileSync, execSync, spawn } from 'child_process';
+import { promisify } from 'util';
+import { fileURLToPath } from 'url';
+import { markAgentLaunched, quitTradingView, TV_BINARY_CANDIDATES, desktopLaunchEnv } from './ensure_tv.js';
 import { sleep, UNWRAP_FN } from './_page.js';
 
 export async function healthCheck() {
@@ -194,27 +197,8 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
     return { success: true, already_running: true, platform, ...cdpInfo(running) };
   }
 
-  const pathMap: Record<string, string[]> = {
-    darwin: [
-      '/Applications/TradingView.app/Contents/MacOS/TradingView',
-      `${process.env.HOME}/Applications/TradingView.app/Contents/MacOS/TradingView`,
-    ],
-    win32: [
-      `${process.env.LOCALAPPDATA}\\TradingView\\TradingView.exe`,
-      `${process.env.PROGRAMFILES}\\TradingView\\TradingView.exe`,
-      `${process.env['PROGRAMFILES(X86)']}\\TradingView\\TradingView.exe`,
-    ],
-    linux: [
-      '/opt/TradingView/tradingview',
-      '/opt/TradingView/TradingView',
-      `${process.env.HOME}/.local/share/TradingView/TradingView`,
-      '/usr/bin/tradingview',
-      '/snap/tradingview/current/tradingview',
-    ],
-  };
-
   let tvPath: string | null = null;
-  const candidates = pathMap[platform] || pathMap.linux;
+  const candidates = TV_BINARY_CANDIDATES[platform] || TV_BINARY_CANDIDATES.linux;
   for (const p of candidates) {
     if (p && existsSync(p)) { tvPath = p; break; }
   }
@@ -241,7 +225,7 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
     throw new Error(`TradingView not found on ${platform}. Searched: ${candidates.join(', ')}. Launch manually with: /path/to/TradingView --remote-debugging-port=${cdpPort}`);
   }
 
-  if (killFirst) {
+  if (killFirst && platform !== 'darwin') {
     try {
       if (platform === 'win32') {
         execSync('taskkill /F /IM TradingView.exe', { timeout: 5000 });
@@ -257,7 +241,20 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
     } catch { /* may not be running */ }
   }
 
-  const child = spawn(tvPath, [`--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore' });
+  if (platform === 'darwin' && killFirst) {
+    const script = fileURLToPath(new URL('../../scripts/launch_tv_debug_mac.sh', import.meta.url));
+    await promisify(execFile)('bash', [script, String(cdpPort)], { timeout: 60000, env: desktopLaunchEnv() });
+    const info = await probeCdp(cdpPort);
+    if (!info) throw new Error(`TradingView launch script finished but CDP is unavailable on port ${cdpPort}`);
+    setCdpPort(cdpPort);
+    markAgentLaunched();
+    return { success: true, platform, method: 'script', ...cdpInfo(info) };
+  }
+
+  const env = desktopLaunchEnv();
+  const child = platform === 'darwin'
+    ? spawn('open', ['-a', tvPath.replace(/\/Contents\/MacOS\/TradingView$/, ''), '--args', `--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore', env })
+    : spawn(tvPath, [`--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore', env });
   // Without a listener, a spawn failure (EACCES, missing binary) is an uncaught 'error' that kills the server.
   let spawnError = null as Error | null;
   child.once('error', (err) => { spawnError = err; });
@@ -269,6 +266,7 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
     const info = await probeCdp(cdpPort);
     if (info) {
       setCdpPort(cdpPort);
+      markAgentLaunched();
       return { success: true, platform, binary: tvPath, pid: child.pid, ...cdpInfo(info) };
     }
   }
@@ -280,4 +278,13 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
       ? 'It may still be loading; try tv_health_check shortly.'
       : 'If TradingView was already running without CDP, pass kill_existing: true to restart it with CDP.'),
   );
+}
+
+export async function quit(options: Parameters<typeof quitTradingView>[0] = {}) {
+  const result = await quitTradingView(options);
+  if (result.success && !result.skipped) {
+    await disconnect();
+    resetAutoLaunchLatch();
+  }
+  return result;
 }

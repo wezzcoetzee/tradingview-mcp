@@ -43,7 +43,7 @@ if [ -z "$APP" ] || [ ! -f "$APP" ]; then
   exit 1
 fi
 
-APP_BUNDLE="${APP%/Contents/MacOS/TradingView}.app"
+APP_BUNDLE="${APP%/Contents/MacOS/TradingView}"
 # Kill the entire app process tree (main executable + Chromium helpers).
 # Exact matching of only "$APP" misses the trailing CDP args and leaves stale
 # helper processes behind, so match commands rooted inside this app bundle.
@@ -72,6 +72,8 @@ echo "Launching via LaunchServices with --remote-debugging-port=$PORT ..."
 # TradingView Desktop's macOS Electron 38 wrapper can hang CDP requests when
 # its inner Mach-O is spawned directly. Launch the app bundle and pass flags via
 # LaunchServices instead. The prior process cleanup above ensures this is fresh.
+# Electron hosts may otherwise make TradingView run as Node and exit.
+unset ELECTRON_RUN_AS_NODE
 open -a "$APP_BUNDLE" --args "--remote-debugging-port=$PORT" >/dev/null 2>&1 &
 TV_PID=$!
 echo "Launcher PID: $TV_PID"

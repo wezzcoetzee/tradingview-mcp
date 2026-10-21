@@ -141,3 +141,11 @@ Claude Code ←→ MCP Server (stdio) ←→ CDP (127.0.0.1:9222, override with 
 ```
 
 Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines').get(false)._primitivesDataById`
+
+### TradingView lifecycle
+
+- The first unreachable CDP connection attempts `tv_launch` once per MCP process. Set `TV_MCP_AUTO_LAUNCH=0` to disable it.
+- Existing instances without CDP require explicit `tv_launch` with `kill_existing: true`; on macOS this uses `scripts/launch_tv_debug_mac.sh`.
+- Call `tv_quit` once chart work is complete unless the user asks to keep TradingView open. Keep it open across multi-symbol work within one request.
+- `tv_quit` can restrict shutdown to sessions this MCP process launched with `only_if_agent_launched: true`. Successful shutdown allows the next chart request to auto-launch again.
+- Manual macOS shutdown: `./scripts/quit_tv_mac.sh`.
