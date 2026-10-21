@@ -5,6 +5,13 @@ import { cdpFetch } from '../connection.js';
 import { debug, errorMessage } from '../debug.js';
 
 const execFileAsync = promisify(execFile);
+
+export function desktopLaunchEnv() {
+  const env = { ...process.env };
+  // Electron hosts set this for their CLI; desktop apps must not inherit it.
+  delete env.ELECTRON_RUN_AS_NODE;
+  return env;
+}
 let agentLaunchedSession = false;
 
 export function markAgentLaunched(launched = true) {

@@ -6,7 +6,7 @@ import { existsSync } from 'fs';
 import { execFile, execFileSync, execSync, spawn } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
-import { markAgentLaunched, quitTradingView, TV_BINARY_CANDIDATES } from './ensure_tv.js';
+import { markAgentLaunched, quitTradingView, TV_BINARY_CANDIDATES, desktopLaunchEnv } from './ensure_tv.js';
 import { sleep, UNWRAP_FN } from './_page.js';
 
 export async function healthCheck() {
@@ -243,7 +243,7 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
 
   if (platform === 'darwin' && killFirst) {
     const script = fileURLToPath(new URL('../../scripts/launch_tv_debug_mac.sh', import.meta.url));
-    await promisify(execFile)('bash', [script, String(cdpPort)], { timeout: 60000 });
+    await promisify(execFile)('bash', [script, String(cdpPort)], { timeout: 60000, env: desktopLaunchEnv() });
     const info = await probeCdp(cdpPort);
     if (!info) throw new Error(`TradingView launch script finished but CDP is unavailable on port ${cdpPort}`);
     setCdpPort(cdpPort);
@@ -251,9 +251,10 @@ export async function launch({ port, kill_existing }: LaunchOptions = {}) {
     return { success: true, platform, method: 'script', ...cdpInfo(info) };
   }
 
+  const env = desktopLaunchEnv();
   const child = platform === 'darwin'
-    ? spawn('open', ['-a', tvPath.replace(/\/Contents\/MacOS\/TradingView$/, ''), '--args', `--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore' })
-    : spawn(tvPath, [`--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore' });
+    ? spawn('open', ['-a', tvPath.replace(/\/Contents\/MacOS\/TradingView$/, ''), '--args', `--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore', env })
+    : spawn(tvPath, [`--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore', env });
   // Without a listener, a spawn failure (EACCES, missing binary) is an uncaught 'error' that kills the server.
   let spawnError = null as Error | null;
   child.once('error', (err) => { spawnError = err; });

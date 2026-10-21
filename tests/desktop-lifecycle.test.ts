@@ -38,3 +38,18 @@ it('leaves a manually opened session alone when only_if_agent_launched is set', 
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
 });
+
+it('strips the Electron host flag without changing the parent environment', async () => {
+  const { desktopLaunchEnv } = await import('../src/core/ensure_tv.js');
+  const original = process.env.ELECTRON_RUN_AS_NODE;
+  try {
+    process.env.ELECTRON_RUN_AS_NODE = '1';
+    const env = desktopLaunchEnv();
+    expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+    expect(env.PATH).toBe(process.env.PATH);
+    expect(process.env.ELECTRON_RUN_AS_NODE).toBe('1');
+  } finally {
+    if (original === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
+    else process.env.ELECTRON_RUN_AS_NODE = original;
+  }
+});
