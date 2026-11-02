@@ -2,7 +2,7 @@ import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { screenshotDir, screenshotFilename, captureScreenshot } from '../src/core/capture.js';
+import { screenshotDir, screenshotFilename, captureScreenshot, pickCaptureMethod } from '../src/core/capture.js';
 import { jsonResult } from '../src/tools/_format.js';
 import { batchRun } from '../src/core/batch.js';
 
@@ -17,6 +17,18 @@ describe('screenshotFilename', () => {
 
   it('names a default shot after the region and time', () => {
     assert.equal(screenshotFilename(undefined, 'chart', now), 'tv_chart_2026-01-02T03-04-05-678Z.png');
+  });
+});
+
+describe('pickCaptureMethod', () => {
+  it('renders from the model while the window is hidden, unless told otherwise', () => {
+    assert.equal(pickCaptureMethod(undefined, 'full', true), 'snapshot');
+    assert.equal(pickCaptureMethod(undefined, 'full', false), 'cdp');
+    assert.equal(pickCaptureMethod('cdp', 'chart', true), 'cdp');
+  });
+
+  it('keeps CDP for the Strategy Tester, which has no model render', () => {
+    assert.equal(pickCaptureMethod(undefined, 'strategy_tester', true), 'cdp');
   });
 });
 

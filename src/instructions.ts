@@ -5,6 +5,8 @@ Times are unix seconds unless a parameter name ends in _ms. Pass full indicator 
 
 Start: chart_get_state once (symbol, timeframe, indicator entity IDs). tv_health_check checks the connection; tv_launch starts TradingView with CDP; tv_discover and tv_ui_state are diagnostics. The first unreachable CDP connection auto-launches once unless TV_MCP_AUTO_LAUNCH=0. Call tv_quit after completing chart work unless the user asks to keep TradingView open; keep it open across symbols within one request.
 
+window_hidden: true (screen locked or TradingView minimized) means the on-screen legend and window pixels are stale while the chart API is current. Trust API data; capture_screenshot then renders from the chart model by default (method "snapshot"). tab_new refuses while hidden: work in the current tab and restore its symbol and timeframe afterwards.
+
 Read the chart:
 - quote_get (price snapshot), data_get_ohlcv (ALWAYS summary=true unless you need single bars), data_get_study_values (all visible indicators), data_get_indicator (inputs of one study), depth_get (order book)
 - Custom Pine drawings, always with study_filter and visible indicators: data_get_pine_lines (levels), data_get_pine_labels, data_get_pine_tables, data_get_pine_boxes (zones). Never verbose=true unless asked.

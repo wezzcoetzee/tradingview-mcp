@@ -272,7 +272,7 @@ Read `line.new()`, `label.new()`, `table.new()`, `box.new()` output from any vis
 | Tool | What it does |
 |------|-------------|
 | `tab_list` | List open chart tabs |
-| `tab_new` / `tab_close` | Open/close tabs |
+| `tab_new` / `tab_close` | Open/close tabs (`tab_new` refuses while the window is hidden) |
 | `tab_switch` | Switch to a tab by index |
 
 ### Pine Script Development
@@ -309,7 +309,7 @@ Read `line.new()`, `label.new()`, `table.new()`, `box.new()` output from any vis
 | `draw_shape` | Draw horizontal_line, trend_line, rectangle, text |
 | `draw_list` / `draw_get_properties` / `draw_remove_one` / `draw_clear` | Manage drawings |
 | `alert_create` / `alert_list` / `alert_delete` | Manage price alerts |
-| `capture_screenshot` | Screenshot (regions: full, chart, strategy_tester); saved to `TV_MCP_SCREENSHOT_DIR` (default: OS temp dir), `inline: true` also returns the image |
+| `capture_screenshot` | Screenshot (regions: full, chart, strategy_tester); saved to `TV_MCP_SCREENSHOT_DIR` (default: OS temp dir), `inline: true` also returns the image; `method: "snapshot"` renders from the chart model and is the default while the window is hidden (screen locked or minimized) |
 | `batch_run` | Run action across multiple symbols/timeframes |
 | `watchlist_get` / `watchlist_add` | Read/modify watchlist |
 | `layout_list` / `layout_switch` | Manage saved layouts |

@@ -7,7 +7,8 @@ import { execFile, execFileSync, execSync, spawn } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { markAgentLaunched, quitTradingView, TV_BINARY_CANDIDATES, desktopLaunchEnv } from './ensure_tv.js';
-import { sleep, UNWRAP_FN } from './_page.js';
+import { sleep, hiddenWindowNote, UNWRAP_FN } from './_page.js';
+import { LEGEND_TITLE } from '../wait.js';
 
 export async function healthCheck() {
   await getClient();
@@ -15,7 +16,7 @@ export async function healthCheck() {
 
   const state = await evaluate(`
     (function() {
-      var result = { url: window.location.href, title: document.title };
+      var result = { url: window.location.href, title: document.title, hidden: document.hidden };
       try {
         var chart = window.TradingViewApi._activeChartWidgetWV.value();
         result.symbol = chart.symbol();
@@ -43,6 +44,7 @@ export async function healthCheck() {
     chart_resolution: state?.resolution || 'unknown',
     chart_type: state?.chartType ?? null,
     api_available: state?.apiAvailable ?? false,
+    ...hiddenWindowNote(state?.hidden),
   };
 }
 
@@ -95,7 +97,7 @@ export async function discover() {
 export async function uiState() {
   const state = await evaluate(`
     (function() {
-      var ui = {};
+      var ui = { window_hidden: document.hidden };
       var bottom = document.querySelector('[class*="layout__area--bottom"]');
       ui.bottom_panel = { open: !!(bottom && bottom.offsetHeight > 50), height: bottom ? bottom.offsetHeight : 0 };
       var right = document.querySelector('[class*="layout__area--right"]');
@@ -149,7 +151,7 @@ export async function uiState() {
       }
       try {
         var chart = window.TradingViewApi._activeChartWidgetWV.value();
-        ui.chart = { symbol: chart.symbol(), resolution: chart.resolution(), chartType: chart.chartType(), study_count: chart.getAllStudies().length };
+        ui.chart = { symbol: chart.symbol(), description: chart.symbolExt().description, legend: ${LEGEND_TITLE}, resolution: chart.resolution(), chartType: chart.chartType(), study_count: chart.getAllStudies().length };
       } catch(e) { ui.chart = { error: e.message }; }
       try {
         var replay = window.TradingViewApi._replayApi;

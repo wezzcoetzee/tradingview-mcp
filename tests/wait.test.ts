@@ -1,6 +1,6 @@
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
-import { waitFor, waitForChartReady, symbolMatches, resolutionMatches } from '../src/wait.js';
+import { waitFor, waitForChartReady, symbolMatches, resolutionMatches, legendMatches } from '../src/wait.js';
 import { jsonResult } from '../src/tools/_format.js';
 
 const sequence = (values: unknown[]) => {
@@ -46,6 +46,37 @@ describe('waitForChartReady', () => {
     const r = await waitForChartReady(null, '60', 20, { interval: 5, evaluate });
     assert.equal(r.ok, false);
     assert.equal(r.value?.resolution, '1D');
+  });
+
+  const zec = { symbol: 'COINBASE:ZECUSD', resolution: '1D', bars: 300, description: 'Zcash / US Dollar' };
+
+  it('waits for a visible legend to catch up with the API symbol', async () => {
+    const evaluate = sequence([
+      ...Array(3).fill({ ...zec, legend: 'SOL / TetherUS', hidden: false }),
+      ...Array(3).fill({ ...zec, legend: 'Zcash / US Dollar', hidden: false }),
+    ]);
+    const r = await waitForChartReady('ZECUSD', null, 1000, { interval: 1, evaluate });
+    assert.equal(r.ok, true);
+    assert.equal(r.value?.legend, 'Zcash / US Dollar');
+  });
+
+  it('fails while a visible legend keeps showing the old symbol', async () => {
+    const evaluate = sequence([{ ...zec, legend: 'SOL / TetherUS', hidden: false }]);
+    const r = await waitForChartReady('ZECUSD', null, 20, { interval: 1, evaluate });
+    assert.equal(r.ok, false);
+  });
+
+  it('does not wait on the legend of a hidden window, which cannot repaint', async () => {
+    const evaluate = sequence([{ ...zec, legend: 'SOL / TetherUS', hidden: true }]);
+    const r = await waitForChartReady('ZECUSD', null, 1000, { interval: 1, evaluate });
+    assert.equal(r.ok, true);
+    assert.equal(r.value?.hidden, true);
+  });
+
+  it('accepts a legend showing the ticker or no legend at all', () => {
+    assert.ok(legendMatches({ ...zec, legend: 'ZECUSD' }));
+    assert.ok(legendMatches({ ...zec, legend: null }));
+    assert.ok(!legendMatches({ ...zec, legend: 'SOL / TetherUS' }));
   });
 
   it('matches symbols and resolutions loosely', () => {

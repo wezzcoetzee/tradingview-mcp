@@ -70,7 +70,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 
 ### "Panes, tabs, watchlist, symbols"
 - `pane_list`, `pane_set_layout`, `pane_focus`, `pane_set_symbol` → multi-chart grids
-- `tab_list`, `tab_new`, `tab_close`, `tab_switch` → chart tabs
+- `tab_list`, `tab_new`, `tab_close`, `tab_switch` → chart tabs (`tab_new` refuses while the window is hidden; work in the current tab and restore symbol/timeframe after)
 - `watchlist_get`, `watchlist_add`; `symbol_info` (current symbol), `symbol_search` (find tickers); `layout_list`, `layout_switch`
 - `indicator_set_inputs`, `indicator_toggle_visibility` → tweak studies already on the chart
 
@@ -91,11 +91,14 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `layout_switch` → load a saved layout by name
 - `ui_fullscreen` → toggle fullscreen
 - `ui_find_element`, `ui_hover`, `ui_scroll`, `ui_mouse_click`, `ui_keyboard`, `ui_type_text` → lower-level UI automation, last resort
-- `capture_screenshot` → take a screenshot (regions: "full" (default), "chart", "strategy_tester"; `inline: true` also returns the image; `region_fallback: true` means the region was not found and the full window was captured)
+- `capture_screenshot` → take a screenshot (regions: "full" (default), "chart", "strategy_tester"; `inline: true` also returns the image; `region_fallback: true` means a different region was captured, see `region`). `method: "snapshot"` renders the chart panes, legend and drawings from the chart model; it is the default while the window is hidden
 
 ### "TradingView isn't running"
 - `tv_launch` → auto-detect and launch TradingView with CDP on Mac/Win/Linux (returns `already_running` if CDP is up; pass `kill_existing: true` if TradingView is open without CDP). Other tools then use its port
 - `tv_health_check` → verify connection is working
+
+### "The window is hidden" (`window_hidden: true`)
+When the screen is locked or TradingView is minimized, the page is hidden and TradingView stops repainting its DOM: the legend keeps the old symbol and CDP screenshots mix a fresh canvas with stale UI. The chart API stays current. `chart_set_symbol`/`chart_set_timeframe`, `tv_health_check` and `tv_ui_state` report `window_hidden` with a `warning`; `capture_screenshot` then renders from the model by default. When the window is visible, symbol changes also wait for the on-screen legend to agree.
 
 ## Context Management Rules
 

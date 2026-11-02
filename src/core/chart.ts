@@ -4,7 +4,7 @@
 import { safeString, requireFinite, requireText } from '../connection.js';
 import { waitFor } from '../wait.js';
 import { parseJsonObject } from './json.js';
-import { CHART_API, own, resolveDeps as _resolve, type WithDeps } from './_page.js';
+import { CHART_API, own, hiddenWindowNote, resolveDeps as _resolve, type WithDeps } from './_page.js';
 
 export async function getState({ _deps }: WithDeps = {}) {
   const { evaluate } = _resolve(_deps);
@@ -39,9 +39,9 @@ export async function setSymbol({ symbol: raw, _deps }: SetSymbolParams) {
   await evaluate(`${CHART_API}.setSymbol(${safeString(symbol)}, {})`);
   const { ok, value } = await waitForChartReady(symbol);
   if (!ok) {
-    return { success: false, error: 'Chart did not switch to the requested symbol', expected: symbol, seen: value?.symbol ?? null };
+    return { success: false, error: 'Chart did not switch to the requested symbol', expected: symbol, seen: value?.symbol ?? null, seen_legend: value?.legend ?? null };
   }
-  return { success: true, symbol, chart_ready: true };
+  return { success: true, symbol, chart_ready: true, ...hiddenWindowNote(value?.hidden) };
 }
 
 export interface SetTimeframeParams extends WithDeps {
@@ -56,7 +56,7 @@ export async function setTimeframe({ timeframe: raw, _deps }: SetTimeframeParams
   if (!ok) {
     return { success: false, error: 'Chart did not switch to the requested timeframe', expected: timeframe, seen: value?.resolution ?? null };
   }
-  return { success: true, timeframe, chart_ready: true };
+  return { success: true, timeframe, chart_ready: true, ...hiddenWindowNote(value?.hidden) };
 }
 
 /** TradingView chart style ids (the public SeriesStyle enum). Not listed: 11 (Range in newer builds), 16 and above. */

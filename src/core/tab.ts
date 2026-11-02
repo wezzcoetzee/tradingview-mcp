@@ -2,7 +2,7 @@
  * Core tab management logic.
  * Controls TradingView Desktop tabs via CDP and Electron keyboard shortcuts.
  */
-import { getClient, disconnect, setPreferredTargetId, getPreferredTargetId, listTargets, pickChartTarget, cdpFetch } from '../connection.js';
+import { getClient, evaluate, disconnect, setPreferredTargetId, getPreferredTargetId, listTargets, pickChartTarget, cdpFetch } from '../connection.js';
 import { sleep } from './_page.js';
 
 const TAB_CHANGE_TIMEOUT_MS = 5000;
@@ -54,6 +54,11 @@ async function pressShortcut(key: string, code: string, windowsVirtualKeyCode: n
  * Open a new chart tab via keyboard shortcut (Ctrl+T / Cmd+T).
  */
 export async function newTab() {
+  // TradingView Desktop opens tabs through its own UI, which does not render while hidden.
+  if (await evaluate('document.hidden')) {
+    throw new Error('TradingView window is hidden (screen locked or minimized), so TradingView Desktop cannot open a tab. '
+      + 'Work in the current tab and restore its symbol and timeframe afterwards.');
+  }
   const before = await list();
   await pressShortcut('t', 'KeyT', 84);
 
