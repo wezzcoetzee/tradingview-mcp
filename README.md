@@ -272,7 +272,7 @@ Read `line.new()`, `label.new()`, `table.new()`, `box.new()` output from any vis
 | Tool | What it does |
 |------|-------------|
 | `tab_list` | List open chart tabs |
-| `tab_new` / `tab_close` | Open/close tabs |
+| `tab_new` / `tab_close` | Open/close tabs (`tab_new` refuses while the window is hidden) |
 | `tab_switch` | Switch to a tab by index |
 
 ### Pine Script Development
