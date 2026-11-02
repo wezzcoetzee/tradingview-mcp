@@ -32,6 +32,15 @@ describe('setSymbol / setTimeframe', () => {
     const waitForChartReady = async () => ({ ok: true, value: undefined });
     const result = await setSymbol({ symbol: 'AAPL', _deps: deps(undefined, { waitForChartReady })._deps });
     assert.equal(result.success, true);
+    assert.equal('window_hidden' in result, false);
+  });
+
+  it('warn that the display is stale when the window is hidden', async () => {
+    const waitForChartReady = async () => ({ ok: true, value: { symbol: 'AAPL', resolution: '60', bars: 10, description: 'Apple', legend: 'Microsoft', hidden: true } });
+    const result = await setTimeframe({ timeframe: '60', _deps: deps(undefined, { waitForChartReady })._deps });
+    assert.ok(result.success && 'window_hidden' in result);
+    assert.equal(result.window_hidden, true);
+    assert.match(result.warning, /hidden/);
   });
 });
 

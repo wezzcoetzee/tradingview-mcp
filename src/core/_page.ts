@@ -9,7 +9,16 @@ export const CHART_API = KNOWN_PATHS.chartApi;
 /** In-page function declaration that unwraps TradingView watched values (objects with a .value() method). */
 export const UNWRAP_FN = `function unwrap(v) { return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; }`;
 
-export const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+export const HIDDEN_WINDOW_WARNING =
+  'TradingView window is hidden (screen locked or minimized): the on-screen legend and CDP screenshots are stale. '
+  + 'The chart API state is current; capture_screenshot renders from it (method "snapshot").';
+
+/** Fields to merge into a result when the TradingView window cannot repaint. */
+export function hiddenWindowNote(hidden: boolean | undefined) {
+  return hidden ? { window_hidden: true, warning: HIDDEN_WINDOW_WARNING } : {};
+}
+
+export const sleep =(ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 export interface CoreDeps {
   evaluate?: typeof _evaluate;
