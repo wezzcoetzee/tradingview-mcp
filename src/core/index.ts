@@ -20,3 +20,5 @@ export * as stream from './stream.js';
 export * as analysis from './analysis.js';
 
 export * as history from './history.js';
+
+export * as monitor from './monitor.js';

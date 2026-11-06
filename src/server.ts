@@ -1,8 +1,14 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServer } from './create-server.js';
+import { disconnect } from './connection.js';
 import { errorMessage } from './debug.js';
 
 const server = createServer();
+const onclose = server.server.onclose;
+server.server.onclose = () => {
+  onclose?.();
+  void disconnect();
+};
 
 // Startup notice (stderr so it doesn't interfere with MCP stdio protocol)
 process.stderr.write('⚠  tradingview-mcp  |  Unofficial tool. Not affiliated with TradingView Inc. or Anthropic.\n');

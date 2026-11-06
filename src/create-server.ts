@@ -15,6 +15,7 @@ import { registerWatchlistTools } from './tools/watchlist.js';
 import { registerUiTools } from './tools/ui.js';
 import { registerPaneTools } from './tools/pane.js';
 import { registerTabTools } from './tools/tab.js';
+import { registerMonitorTools } from './tools/monitor.js';
 import { INSTRUCTIONS } from './instructions.js';
 import { registerSkillPrompts } from './skills.js';
 import pkg from '../package.json' with { type: 'json' };
@@ -41,6 +42,7 @@ export function createServer(): McpServer {
   registerCaptureTools(server);
   registerDrawingTools(server);
   registerAlertTools(server);
+  registerMonitorTools(server);
   registerBatchTools(server);
   registerReplayTools(server);
   registerIndicatorTools(server);

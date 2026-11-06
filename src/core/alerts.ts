@@ -1,130 +1,176 @@
-/**
- * Core alert logic.
- */
-import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
-import { sleep } from './_page.js';
+import { evaluate, evaluateAsync } from '../connection.js';
+import { CHART_API, sleep } from './_page.js';
 
-interface AlertSummary { alert_id: string | number }
-
-/** Returns the first alert in `after` whose id is not in `before`. */
+export interface AlertSummary {
+  alert_id: string | number;
+  symbol?: string;
+  message?: string;
+  condition?: unknown;
+  frequency?: unknown;
+  resolution?: string;
+  expiration?: unknown;
+}
+export const conditions = ['crossing', 'above', 'below', 'crossing_up', 'crossing_down'] as const;
+export const frequencies = ['once', 'once_per_bar', 'once_per_bar_close', 'once_per_minute'] as const;
+export interface CreateOptions {
+  price: number;
+  message?: string;
+  condition?: typeof conditions[number];
+  frequency?: typeof frequencies[number];
+  resolution?: string;
+  /** Unix seconds. Defaults to 30 days from this call. */
+  expiry?: number;
+  expected_symbol?: string;
+}
+export interface AlertRequest {
+  price: number;
+  message: string;
+  condition: typeof conditions[number];
+  frequency: typeof frequencies[number];
+  resolution: string;
+  expiry: number;
+  expected_symbol: string;
+}
 export function findNewAlert<T extends AlertSummary>(before: AlertSummary[], after: T[]): T | undefined {
-  const known = new Set(before.map(a => a.alert_id));
-  return after.find(a => !known.has(a.alert_id));
+  const known = new Set(before.map(a => String(a.alert_id)));
+  return after.find(a => !known.has(String(a.alert_id)));
 }
 
-// Every DOM step in create() is scoped to this element so we never touch unrelated page controls.
-const ALERT_DIALOG_JS = `(document.querySelector('[data-name="alerts-create-edit-dialog"]')
-  || document.querySelector('[role="dialog"][class*="alert"], [role="dialog"][data-name*="alert"]'))`;
-
-async function closeDialog() {
-  const client = await getClient();
-  await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-  await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+/** Native, exactly labelled controls only. Unknown/custom layouts fail before any field writes. */
+export function configureDialog(request: AlertRequest, submit = false) {
+  const dialogs = document.querySelectorAll<HTMLElement>('[data-name="alerts-create-edit-dialog"]');
+  if (dialogs.length !== 1) return { ok: false, error: 'Unique alert dialog not found' };
+  const dialog = dialogs[0];
+  if (request.expiry <= Date.now() / 1000) return { ok: false, error: 'Requested expiration has elapsed' };
+  const chart = (window as unknown as { TradingViewApi: { _activeChartWidgetWV: { value(): { symbol(): string; resolution(): string } } } }).TradingViewApi._activeChartWidgetWV.value();
+  if (chart.symbol() !== request.expected_symbol || chart.resolution() !== request.resolution) {
+    return { ok: false, error: 'Active chart identity changed or requested resolution differs from chart' };
+  }
+  const labelled = (name: string) => {
+    const matches = [...dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')]
+      .filter(el => el.getAttribute('aria-label') === name || [...(el.labels || [])].some(label => label.textContent?.trim() === name));
+    return matches.length === 1 ? matches[0] : undefined;
+  };
+  const conditionNames = { crossing: 'Crossing', above: 'Greater Than', below: 'Less Than', crossing_up: 'Crossing Up', crossing_down: 'Crossing Down' };
+  const frequencyNames = { once: 'Only Once', once_per_bar: 'Once Per Bar', once_per_bar_close: 'Once Per Bar Close', once_per_minute: 'Once Per Minute' };
+  const date = new Date(request.expiry * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const expiry = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}${date.getSeconds() ? ':' + pad(date.getSeconds()) : ''}`;
+  const plan: { element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement; value: string }[] = [];
+  for (const [label, wanted, kind] of [
+    ['Symbol', request.expected_symbol, 'select'],
+    ['Source', 'Price', 'select'],
+    ['Condition', conditionNames[request.condition], 'select'],
+    ['Trigger', frequencyNames[request.frequency], 'select'],
+    ['Interval', request.resolution, 'select'],
+    ['Value', String(request.price), 'input'],
+    ['Expiration time', expiry, 'datetime-local'],
+    ['Message', request.message, 'textarea'],
+  ]) {
+    const element = labelled(label);
+    if (!element || element.disabled || element.getAttribute('readonly') !== null) return { ok: false, error: `Unavailable exact control: ${label}` };
+    let value = wanted;
+    if (kind === 'select') {
+      if (!(element instanceof HTMLSelectElement)) return { ok: false, error: `Unsupported custom control: ${label}` };
+      const options = [...element.options].filter(option => !option.disabled && (option.textContent?.trim() === wanted || (label === 'Interval' && option.value === wanted)));
+      if (options.length !== 1) return { ok: false, error: `Unavailable exact option: ${label} = ${wanted}` };
+      value = options[0].value;
+    } else if (kind === 'textarea' ? !(element instanceof HTMLTextAreaElement)
+      : !(element instanceof HTMLInputElement) || (kind === 'datetime-local' ? element.type !== kind : !['text', 'number'].includes(element.type))) {
+      return { ok: false, error: `Unsupported control: ${label}` };
+    }
+    plan.push({ element, value });
+  }
+  const buttons = [...dialog.querySelectorAll<HTMLButtonElement>('button')].filter(button => button.textContent?.trim() === 'Create' && !button.disabled);
+  if (buttons.length !== 1) return { ok: false, error: 'Unique enabled Create button not found' };
+  if (!submit) {
+    for (const { element, value } of plan) {
+      const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype
+        : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+  if (plan.some(({ element, value }) => element.value !== value || !element.checkValidity())) return { ok: false, error: 'Alert controls did not retain the exact requested values' };
+  if (submit) buttons[0].click();
+  return { ok: true };
 }
 
-export async function create({ price, message }: { price: number; message?: string }) {
-  const before = await list();
-  if (before.error) {
-    return { success: false, error: `Cannot verify alert creation, alert list unavailable: ${before.error}` };
+export interface CreateIO {
+  evaluate: typeof evaluate;
+  list: () => Promise<{ alerts: AlertSummary[]; error?: string }>;
+  sleep: (ms: number) => Promise<void>;
+  now: () => number;
+}
+
+export function verifyCreatedAlert(request: AlertRequest, alert: AlertSummary) {
+  const verified: string[] = [];
+  const mismatched: string[] = [];
+  const unverified = ['condition', 'frequency', 'price'];
+  for (const key of ['symbol', 'resolution', 'message', 'expiration'] as const) {
+    const expected = key === 'symbol' ? request.expected_symbol : key === 'expiration' ? request.expiry : request[key];
+    if (alert[key] === undefined) unverified.push(key);
+    else if (alert[key] === expected) verified.push(key);
+    else mismatched.push(key);
   }
+  return { verified, mismatched, unverified, raw_condition: alert.condition, raw_frequency: alert.frequency };
+}
 
-  const opened = await evaluate(`
-    (function() {
-      var btn = document.querySelector('[aria-label="Create Alert"]')
-        || document.querySelector('[data-name="alerts"]');
-      if (btn) { btn.click(); return true; }
-      return false;
-    })()
-  `);
-
-  if (!opened) {
-    const client = await getClient();
-    await client.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: 1, key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65 });
-    await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'a', code: 'KeyA' });
+export async function create(options: CreateOptions, deps: Partial<CreateIO> = {}) {
+  const io = { evaluate, list, sleep, now: Date.now, ...deps };
+  if (!Number.isFinite(options.price) || (options.condition !== undefined && !conditions.includes(options.condition))
+    || (options.frequency !== undefined && !frequencies.includes(options.frequency))
+    || (options.message !== undefined && typeof options.message !== 'string')
+    || (options.resolution !== undefined && !/^(?:[1-9]\d*(?:S|D|W|M)?|D|W|M)$/.test(options.resolution))
+    || (options.expiry !== undefined && (!Number.isInteger(options.expiry) || options.expiry <= io.now() / 1000 || options.expiry > 8_640_000_000_000))
+    || (options.expected_symbol !== undefined && !options.expected_symbol.trim())) {
+    return { success: false, status: 'refused', error: 'Invalid price, condition, frequency, resolution, expiry, message, or expected_symbol' };
   }
-
-  await sleep(1000);
-
-  const fill = await evaluate(`
-    (function() {
-      var dialog = ${ALERT_DIALOG_JS};
-      if (!dialog) return { dialogFound: false, priceSet: false };
-      var inputs = dialog.querySelectorAll('input[type="text"], input[type="number"]');
-      var target = null;
-      for (var i = 0; i < inputs.length && !target; i++) {
-        var label = inputs[i].closest('[class*="row"]')?.querySelector('[class*="label"]');
-        if (label && /value|price/i.test(label.textContent)) target = inputs[i];
+  const chart: { symbol: string; resolution: string } = await io.evaluate(`({ symbol: ${CHART_API}.symbol(), resolution: ${CHART_API}.resolution() })`);
+  if (!chart?.symbol || !chart.resolution || (options.expected_symbol && options.expected_symbol !== chart.symbol)
+    || (options.resolution && options.resolution !== chart.resolution)) return { success: false, status: 'refused', error: 'Expected active symbol/resolution does not match chart' };
+  const request: AlertRequest = { price: options.price, message: options.message ?? '', condition: options.condition ?? 'crossing',
+    frequency: options.frequency ?? 'once', resolution: options.resolution ?? chart.resolution,
+    expiry: options.expiry ?? Math.ceil(io.now() / 60000) * 60 + 30 * 86400, expected_symbol: chart.symbol };
+  const before = await io.list();
+  if (before.error) return { success: false, status: 'refused', error: `Cannot verify alert creation: ${before.error}` };
+  const opened = await io.evaluate(`(() => {
+    if (document.querySelector('[data-name="alerts-create-edit-dialog"]')) return false;
+    const buttons = document.querySelectorAll('[aria-label="Create Alert"]');
+    if (buttons.length !== 1) return false;
+    buttons[0].click(); return true;
+  })()`);
+  if (!opened) return { success: false, status: 'refused', error: 'Unique Create Alert button unavailable or a dialog is already open' };
+  await io.sleep(500);
+  const configure = (submit: boolean) => io.evaluate(`(${configureDialog.toString()})(${JSON.stringify(request)}, ${submit})`) as Promise<{ ok: boolean; error?: string }>;
+  const filled = await configure(false);
+  if (!filled?.ok) return { success: false, status: 'refused', error: filled?.error ?? 'Cannot configure alert dialog', requested: request, submitted: false };
+  await io.sleep(250);
+  try {
+    const submitted = await configure(true);
+    if (!submitted?.ok) return { success: false, status: 'refused', error: submitted?.error ?? 'Cannot submit alert dialog', requested: request, submitted: false };
+    let after = before;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await io.sleep(500);
+      after = await io.list();
+      if (after.error) continue;
+      const candidates = after.alerts.filter(alert => !before.alerts.some(old => String(old.alert_id) === String(alert.alert_id)));
+      if (candidates.length > 1) return { success: false, status: 'unverified', submitted: true, error: 'Multiple new alerts; cannot attribute creation. Do not retry automatically.', requested: request };
+      if (candidates.length === 1) {
+        const alert = candidates[0];
+        const verification = verifyCreatedAlert(request, alert);
+        return { success: false, status: verification.mismatched.length ? 'mismatch' : 'unverified', submitted: true,
+          alert_id: alert.alert_id, requested: request, verification,
+          error: 'Alert appeared, but raw list condition/frequency have no verified decoder. Do not retry automatically; inspect alert_list or the dialog.' };
       }
-      target = target || inputs[0];
-      if (!target) return { dialogFound: true, priceSet: false };
-      var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-      nativeSet.call(target, ${safeString(String(price))});
-      target.dispatchEvent(new Event('input', { bubbles: true }));
-      target.dispatchEvent(new Event('change', { bubbles: true }));
-      return { dialogFound: true, priceSet: true };
-    })()
-  `);
-
-  if (!fill?.dialogFound || !fill.priceSet) {
-    if (fill?.dialogFound) await closeDialog();
-    return {
-      success: false,
-      error: fill?.dialogFound ? 'Could not set the price in the alert dialog' : 'Alert dialog not found',
-      price_set: false,
-    };
+    }
+    return { success: false, status: 'unverified', submitted: true, requested: request,
+      error: after.error ?? 'No new alert appeared after submission. Do not retry automatically.' };
+  } catch (error) {
+    return { success: false, status: 'unverified', submission_attempted: true, requested: request,
+      error: `Submission or verification failed: ${String(error)}. Do not retry automatically; inspect alert_list.` };
   }
-
-  if (message) {
-    await evaluate(`
-      (function() {
-        var dialog = ${ALERT_DIALOG_JS};
-        var textarea = dialog && dialog.querySelector('textarea');
-        if (textarea) {
-          var nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-          nativeSet.call(textarea, ${JSON.stringify(message)});
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-      })()
-    `);
-  }
-
-  await sleep(500);
-  const submitted = await evaluate(`
-    (function() {
-      var dialog = ${ALERT_DIALOG_JS};
-      if (!dialog) return false;
-      var btns = dialog.querySelectorAll('button');
-      for (var i = 0; i < btns.length; i++) {
-        if (/^create$/i.test(btns[i].textContent.trim())) { btns[i].click(); return true; }
-      }
-      return false;
-    })()
-  `);
-
-  if (!submitted) {
-    await closeDialog();
-    return { success: false, error: 'Create button not found in the alert dialog', price_set: true };
-  }
-
-  // The alert list is server-backed, so give it a few seconds to reflect the new alert
-  let after = before;
-  let created: AlertSummary | undefined;
-  for (let i = 0; i < 6 && !created; i++) {
-    await sleep(500);
-    after = await list();
-    created = findNewAlert(before.alerts, after.alerts);
-  }
-
-  if (!created) {
-    return {
-      success: false,
-      error: after.error || 'Create was clicked but no new alert appeared in the alert list. Check the condition in the TradingView dialog.',
-      price,
-      price_set: true,
-    };
-  }
-
-  return { success: true, price, message: message || '(none)', price_set: true, alert_id: created.alert_id, note: 'Condition must be set manually in the TradingView dialog before clicking Create.', source: 'dom_fallback' };
 }
 
 export async function list() {
@@ -146,6 +192,7 @@ export async function list() {
               active: a.active,
               condition: a.condition,
               resolution: a.resolution,
+              frequency: a.frequency,
               created: a.create_time,
               last_fired: a.last_fire_time,
               expiration: a.expiration,

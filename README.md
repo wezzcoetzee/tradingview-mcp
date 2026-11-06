@@ -175,6 +175,7 @@ tv data lines/labels/tables/boxes/strategy/trades/equity/depth/indicator
 tv pine get/set/compile/analyze/check/save/new/open/list/errors/console
 tv draw shape/list/get/remove/clear
 tv alert list/create/delete
+tv watch session
 tv watchlist get/add
 tv indicator add/remove/toggle/set/get
 tv layout list/switch
@@ -484,3 +485,73 @@ tv batch --symbols NASDAQ:AAPL,NASDAQ:MSFT --timeframes D,60 --action collect_an
 ```
 
 Offline checks: `bun run test` and `bun run typecheck`. Public Pine compiler CLI tests now require explicit `TV_MCP_TEST_NETWORK=1`; live CDP tests remain separate (`bun run test:live`).
+
+### Exact alerts and process-local watches
+
+`alert_create` (CLI: `tv alert create`) keeps the `price` / optional `message` interface.
+Defaults are explicit: `condition: "crossing"`, `frequency: "once"`, active chart
+resolution, empty message, and expiry 30 days after the call rounded up to the next minute. Optional
+`expected_symbol` refuses the request if the active chart differs (CLI `--symbol`).
+`resolution` must match the chart; switch the chart explicitly first.
+
+Conditions: `crossing`, `above` (Greater Than), `below` (Less Than),
+`crossing_up`, `crossing_down`. Frequencies: `once`, `once_per_bar`,
+`once_per_bar_close`, `once_per_minute`. These select exact dialog options;
+unavailable controls/options are refused. `expiry` / `--expiry` is future unix
+seconds; `--condition`, `--frequency`, `--resolution`, `--message` have matching CLI flags.
+
+The conservative dialog adapter requires one `alerts-create-edit-dialog`, uniquely
+labelled native Symbol, Source (Price), Condition, Trigger, Interval, Value,
+Expiration time (`datetime-local`), and Message controls, and one enabled Create
+button. It preflights all controls before field writes and rechecks their values
+before submission. Custom controls, localized labels, ambiguous controls, and
+unsupported layouts are refused. A refused form may remain open for inspection.
+This adapter has **not** been tested against a live TradingView dialog and may
+refuse the current app. No creation REST endpoint is assumed.
+
+A new list ID alone never proves correct creation. `status: "unverified"` or
+`"mismatch"` has `success: false`, the requested configuration, and list comparison
+details. Symbol, resolution, message, and expiration are compared when available;
+price/condition/frequency stay unverified because the repository has no verified
+decoder for the raw list condition/frequency. Never automatically retry after
+`submitted: true` or `submission_attempted: true`: an alert may already exist.
+TradingView alerts persist on the app side independently of this process.
+
+`watch_start` creates a process-local `price_crossing` or `bar_close` watch and
+returns `watch_id`, initial `cursor: 0`, and `expires_at_ms`. Price watches require a
+finite `price`; `direction` is `crossing` (default), `crossing_up`, or `crossing_down`.
+Each `watch_events` call samples that watch once. There is **no background sampling,
+notification, or wakeup**. Hermes and other clients must schedule and resume their
+own calls. Movements, chart switches away and back, and crossings between samples
+can be missed. Price crossings compare consecutive sampled closes: up is previous
+<= level and current > level; down is previous >= level and current < level.
+Remaining above/below does not repeatedly emit. A bar close requires a later bar
+and a matching previous-bar record, using its final close. Skipped bars or time
+moving backwards emit `sampling_gap`; failed samples reset the baseline.
+
+Pass the last returned `cursor` to read subsequent events. Reads do not consume
+events; an older cursor replays retained events. `dropped` counts overwritten
+events since your cursor; `oldest_cursor` identifies the first retained event.
+Future/negative/noninteger cursors fail before sampling. Sampling loss between calls
+cannot be counted and is always possible. Page/widget/symbol/resolution changes
+emit `identity_changed` and stop that watch's sampling. Retained events remain
+readable until TTL or `watch_stop`. Unknown/expired/stopped IDs return failure;
+`watch_stop` is idempotent.
+
+Limits per server: 32 watches, capacity 1..256 events (default 64), TTL 1..3600000 ms
+(default five minutes). Expired entries are pruned on the next watch operation;
+server close clears everything and stdio shutdown disconnects the shared CDP connection. There are no watch timers or CDP subscriptions,
+and watches do not hold a separate CDP connection. Sampling uses the normal shared
+connection. Watches do not survive restart.
+
+CLI equivalents share one process via `tv watch session`: send JSONL requests on
+stdin with `op: "watch_start"`, `"watch_events"`, or `"watch_stop"` and the same
+parameters at the top level. It emits one JSON result per line. Use the returned
+watch ID/cursor in later lines. Separate CLI invocations cannot share watches.
+EOF, SIGINT, or SIGTERM clears watches and disconnects the CLI's CDP connection.
+
+```json
+{"op":"watch_start","kind":"price_crossing","price":100,"direction":"crossing_up"}
+{"op":"watch_events","watch_id":"<returned watch_id>","cursor":0}
+{"op":"watch_stop","watch_id":"<returned watch_id>"}
+```
