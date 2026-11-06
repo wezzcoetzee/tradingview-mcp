@@ -46,6 +46,7 @@ export function buildGraphicsJS(collectionName: string, mapKey: string, filter?:
       var sources = model.model().dataSources();
       var results = [];
       var available = [];
+      var errors = [];
       var filter = ${safeString(filter || '')}.toLowerCase();
       for (var si = 0; si < sources.length; si++) {
         var s = sources[si];
@@ -71,7 +72,7 @@ export function buildGraphicsJS(collectionName: string, mapKey: string, filter?:
                 }
               }
             }
-          } catch(e) {}
+          } catch(e) { errors.push(name + ': ' + String(e)); }
           if (items.length === 0 && '${collectionName}' === 'dwgtablecells') {
             try {
               var tcOuter = pc.dwgtablecells;
@@ -84,9 +85,9 @@ export function buildGraphicsJS(collectionName: string, mapKey: string, filter?:
             } catch(e) {}
           }
           if (items.length > 0) results.push({name: name, count: items.length, items: items});
-        } catch(e) {}
+        } catch(e) { errors.push(String(e)); }
       }
-      return {studies: results, available: available};
+      return {studies: results, available: available, errors: errors};
     })()
   `;
 }

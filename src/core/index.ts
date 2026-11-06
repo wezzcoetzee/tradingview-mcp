@@ -17,3 +17,4 @@ export * as ui from './ui.js';
 export * as pane from './pane.js';
 export * as tab from './tab.js';
 export * as stream from './stream.js';
+export * as analysis from './analysis.js';
