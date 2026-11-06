@@ -129,7 +129,7 @@ function evidenceExpression(options: Bounds & { entity_id?: string; plots?: stri
             selected.forEach(function(p) { values[p.id] = aligned ? numeric(row[p.column]) : null; });
             return {time: b.value[0], values: values};
           });
-          if (study.rows.length && selected.length && Object.values(study.rows[study.rows.length - 1].values).every(function(v) { return v === null; })) study.warnings.push('Latest selected plot values are unavailable or warming up.');
+          if (study.rows.length && selected.length && Object.values(study.rows[study.rows.length - 1].values).some(function(v) { return v === null; })) study.warnings.push('Some latest selected plot values are unavailable or warming up.');
           if (misaligned) study.warnings.push('Study row layout/timestamps do not align with underlying bars; affected values are null.');
           result.studies.push(study);
         } catch (e) { result.failures.studies = 'A study could not be read: ' + String(e); }

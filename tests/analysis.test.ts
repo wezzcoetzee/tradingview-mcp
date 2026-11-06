@@ -103,7 +103,9 @@ describe('analysis snapshots', () => {
     const result = await getAnalysisSnapshot({ _deps: f.deps });
     assert.equal(f.calls(), 1);
     assert.equal(result.consistency, 'single_synchronous_model_evaluation');
-    assert.equal(result.partial, false);
+    assert.equal(result.partial, true);
+    assert.equal(result.sections.studies?.status, 'partial');
+    assert.ok(result.warnings.some(w => w.includes('Some latest selected plot values')));
     assert.deepEqual(result.sections.levels?.data, [{ name: 'Example', levels: [5] }]);
     assert.deepEqual(result.sections.labels?.data, [{ name: 'Example', labels: [{ text: 'Level', price: 5 }] }]);
     assert.deepEqual(result.sections.tables?.data, [{ name: 'Example', tables: [{ rows: ['Session'] }] }]);
