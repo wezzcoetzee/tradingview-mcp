@@ -14,6 +14,8 @@ import './commands/health.js';
 import './commands/chart.js';
 import './commands/data.js';
 import './commands/analysis.js';
+import './commands/history.js';
+import './commands/batch.js';
 import './commands/pine.js';
 import './commands/capture.js';
 import './commands/replay.js';

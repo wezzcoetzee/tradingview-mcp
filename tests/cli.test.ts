@@ -130,7 +130,7 @@ describe('CLI — pine analyze (offline)', () => {
   });
 });
 
-describe('CLI — pine check (server compile)', () => {
+describe.skipIf(process.env.TV_MCP_TEST_NETWORK !== '1')('CLI — pine check (server compile)', () => {
   it('compiles valid Pine Script', () => {
     const source = '//@version=6\nindicator("test")\nplot(close)';
     const { stdout, exitCode } = run(['pine', 'check'], { input: source });

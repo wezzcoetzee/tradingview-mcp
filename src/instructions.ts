@@ -11,12 +11,13 @@ Read the chart:
 - data_get_study_series (loaded historical numeric plots by entity_id, exact timestamps, null when unavailable), chart_get_analysis_snapshot (guarded compact model evidence with capture interval and partial sections; feed freshness/delay/candle confirmation can be unknown)
 - quote_get (price snapshot), data_get_ohlcv (ALWAYS summary=true unless you need single bars), data_get_study_values (all visible indicators), data_get_indicator (inputs of one study), depth_get (order book)
 - Custom Pine drawings, always with study_filter and visible indicators: data_get_pine_lines (levels), data_get_pine_labels, data_get_pine_tables, data_get_pine_boxes (zones). Never verbose=true unless asked.
+- History: data_load_history (bounded navigation, coverage is not completeness), data_get_ohlcv_page (500 bars/page; use next_before).
 - Strategy Tester: data_get_strategy_results, data_get_trades, data_get_equity
 - symbol_info, symbol_search, watchlist_get, layout_list, capture_screenshot (inline=true returns the image itself)
 
 Change the chart: chart_set_symbol, chart_set_timeframe, chart_set_type, chart_manage_indicator, indicator_set_inputs, indicator_toggle_visibility, chart_scroll_to_date, chart_set_visible_range (chart_get_visible_range reads it), watchlist_add, layout_switch.
 Panes: pane_list, pane_set_layout, pane_focus, pane_set_symbol. Tabs: tab_list, tab_new, tab_close, tab_switch.
-Many symbols or timeframes: batch_run (restores the chart afterwards; reports progress).
+Many symbols or timeframes: batch_run (study values/Pine drawings/collect_analysis plus existing actions; bounded summaries, study_filter; reports symbol/timeframe/range restoration failures and progress).
 
 Pine Script: pine_set_source, then pine_smart_compile (the default compile; pine_compile is a raw button click), pine_get_errors, pine_get_console, pine_save. pine_get_source can be huge: use from_line/to_line. pine_new and pine_open replace the editor. pine_list_scripts lists saved scripts. pine_analyze (offline lint) and pine_check (server compile) take a source argument and ignore the editor.
 

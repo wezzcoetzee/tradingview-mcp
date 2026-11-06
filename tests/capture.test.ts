@@ -56,11 +56,16 @@ describe('batchRun screenshots and progress', () => {
   it('reuses captureScreenshot and reports progress per iteration', async () => {
     const shots: string[] = [];
     const progress: [number, number][] = [];
+    let symbol = 'ORIGINAL', resolution = '60';
     const res = await batchRun({
       symbols: ['AAPL', 'MSFT'], timeframes: ['D'], action: 'screenshot', delay_ms: 0,
       onProgress: async (done: number, total: number) => { progress.push([done, total]); },
       _deps: {
-        evaluate: async () => null,
+        evaluate: async (e: string) => {
+          if (e.startsWith('COL.setSymbol')) symbol = JSON.parse(e.slice('COL.setSymbol('.length, -1));
+          if (e.startsWith('COL.setResolution')) resolution = JSON.parse(e.slice('COL.setResolution('.length, -1));
+          return e.includes('chart.symbol()') ? { symbol, resolution } : null;
+        },
         waitForChartReady: async () => ({ ok: true, value: undefined }),
         getChartCollection: async () => 'COL',
         captureScreenshot: (async ({ filename = '' } = {}) => { shots.push(filename); return { file_path: `/tmp/${filename}.png` }; }) as unknown as typeof captureScreenshot,

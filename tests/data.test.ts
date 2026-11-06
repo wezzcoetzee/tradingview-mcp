@@ -102,11 +102,14 @@ describe('batchRun', () => {
   const ready = async () => ({ ok: true, value: undefined });
   const baseDeps = (over: Record<string, unknown> = {}) => {
     const calls: string[] = [];
+    let symbol = 'BTCUSD', resolution = '60';
     const deps = {
       evaluate: async (e: string) => {
         calls.push(e);
-        if (e.includes('chart.symbol()')) return { symbol: 'BTCUSD', resolution: '60' };
-        return null;
+        if (e.startsWith('COL.setSymbol')) symbol = JSON.parse(e.slice('COL.setSymbol('.length, -1));
+        if (e.startsWith('COL.setResolution')) resolution = JSON.parse(e.slice('COL.setResolution('.length, -1));
+        if (e.includes('chart.symbol()')) return { symbol, resolution };
+        return e.includes('var metrics') ? { error: 'Strategy Tester not found' } : null;
       },
       waitForChartReady: ready,
       getChartCollection: async () => 'COL',
@@ -127,8 +130,8 @@ describe('batchRun', () => {
     const started = Date.now();
     await batchRun({ symbols: ['AAPL'], timeframes: ['D'], action: 'get_strategy_results', delay_ms: 0, _deps: deps });
     assert.ok(Date.now() - started < 1900);
-    assert.equal(calls.at(-2), 'COL.setSymbol("BTCUSD")');
-    assert.equal(calls.at(-1), 'COL.setResolution("60")');
+    assert.equal(calls.filter(c => c.startsWith('COL.')).at(-2), 'COL.setSymbol("BTCUSD")');
+    assert.equal(calls.filter(c => c.startsWith('COL.')).at(-1), 'COL.setResolution("60")');
   });
 
   it('counts a chart that never became ready as a failure', async () => {
@@ -142,9 +145,7 @@ describe('batchRun', () => {
   });
 
   it('counts an action-level error as a failure', async () => {
-    const { deps } = baseDeps({
-      evaluate: async (e: string) => (e.includes('chart.symbol()') ? { symbol: 'X', resolution: 'D' } : { error: 'Strategy Tester not found' }),
-    });
+    const { deps } = baseDeps();
     const res = await batchRun({ symbols: ['AAPL'], action: 'get_strategy_results', delay_ms: 0, _deps: deps });
     assert.equal(res.success, false);
     const first = res.results[0];
