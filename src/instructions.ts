@@ -8,6 +8,7 @@ Start: chart_get_state once (symbol, timeframe, indicator entity IDs). tv_health
 window_hidden: true (screen locked or TradingView minimized) means the on-screen legend and window pixels are stale while the chart API is current. Trust API data; capture_screenshot then renders from the chart model by default (method "snapshot"). tab_new refuses while hidden: work in the current tab and restore its symbol and timeframe afterwards.
 
 Read the chart:
+- data_get_study_series (loaded historical numeric plots by entity_id, exact timestamps, null when unavailable), chart_get_analysis_snapshot (guarded compact model evidence with capture interval and partial sections; feed freshness/delay/candle confirmation can be unknown)
 - quote_get (price snapshot), data_get_ohlcv (ALWAYS summary=true unless you need single bars), data_get_study_values (all visible indicators), data_get_indicator (inputs of one study), depth_get (order book)
 - Custom Pine drawings, always with study_filter and visible indicators: data_get_pine_lines (levels), data_get_pine_labels, data_get_pine_tables, data_get_pine_boxes (zones). Never verbose=true unless asked.
 - Strategy Tester: data_get_strategy_results, data_get_trades, data_get_equity

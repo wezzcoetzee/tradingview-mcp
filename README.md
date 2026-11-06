@@ -446,3 +446,17 @@ Use `tv_quit` to close TradingView after chart work. Set
 `only_if_agent_launched: true` to leave manually opened sessions alone, or
 `force: false` to avoid force-killing a process that resists graceful shutdown.
 A successful quit resets the auto-launch attempt for the next session.
+
+### Analysis evidence
+
+- `data_get_study_series`: use an `entity_id` from `chart_get_state` and optional exact plot names/IDs (`plots`), `count` (default 100, max 500), inclusive `from`/`to` Unix seconds. Returns raw numeric line-plot samples aligned to loaded underlying bars by index **and exact timestamp**, with null for missing/warmup/non-finite or incompatible rows. Plot IDs are value keys; plot names accompany them. Display offsets are not applied. It never substitutes crosshair data-window values or loads history.
+- `chart_get_analysis_snapshot`: optional `sections` (`price`, `studies`, `levels`, `labels`, `tables`, `zones`), `count` and `study_filter`. Returns a price/OHLCV summary, latest model study samples, and compact Pine graphics. A single synchronous evaluation collects requested sections and checks active chart/model/latest-bar identity before and after; a change triggers one retry, then an error. This is a guarded capture, not a transaction with the feed. Each section reports `ok`, `partial` or `unavailable`. Graphics are capped at 50 items per study (200 table cells); truncation is explicit.
+
+Both tools include exact symbol, resolution, chart type, capture start/end and metadata. Capture time and latest bar-open timestamp are distinct from quote/feed timestamps, which remain null. Freshness, feed delay and candle confirmation are explicitly unknown; bar-open age never establishes a stale feed or a closed weekly/monthly candle. Timezone, session and price scale/minimum movement are included only when the model exposes them; minimum tick is omitted as null for unsupported fractional/variable tick formats. Prices reflect the current chart type, including synthetic chart bars.
+
+```sh
+tv analysis series --study ENTITY_ID --plots 'Fast,Slow' --count 50 --from 1700000000 --to 1800000000
+tv analysis snapshot --sections price,studies,levels --filter Example --count 100
+```
+
+Historical studies require the internal `study.data().valueAt(index)` array layout `[timestamp, ...plotValues]` and numeric `line` plot metadata. These internals have offline fixture coverage, not live runtime verification. Unsupported layouts return nulls and warnings, and missing studies fail explicitly. Pine graphics are best-effort model reads; empty graphics do not prove an indicator draws nothing. No screenshot is part of the snapshot.

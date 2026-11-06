@@ -24,6 +24,14 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `data_get_ohlcv` without summary → all bars (use `count` to limit, default 100)
 - `quote_get` → single latest price snapshot
 
+### Analysis evidence (preferred compact capture)
+
+- `chart_get_analysis_snapshot` collects requested price/studies/levels/labels/tables/zones in one synchronous model evaluation with chart/latest-bar consistency checks and one bounded retry. Inspect section status, `partial` and warnings before interpreting evidence. Capture is not a feed transaction; no screenshot is included.
+- `data_get_study_series` reads historical numeric line plots for an `entity_id`, with optional exact plot IDs/names, inclusive Unix-second `from`/`to` and `count` capped at 500. Only loaded history is read. Samples must match both underlying bar index and timestamp; unsupported/warmup values are null. Raw model samples do not apply display offsets. Never use data-window values as historical evidence.
+- Both report capture interval, chart type, exact symbol/resolution and metadata. Quote/feed timestamps, freshness, delay and candle confirmation remain unknown. Do not infer feed staleness from bar-open age or weekly/monthly confirmation from fixed seconds. Model timezone/session/precision are nullable.
+- Historical study layout (`data().valueAt(index)` with timestamp then plot columns) is an unverified runtime assumption, covered by offline fixtures. Inspect warnings; do not present unsupported data as verified. Graphics can be absent or unavailable; empty results do not establish absence.
+- CLI: `tv analysis series --study ID --plots Fast,Slow --count 50`; `tv analysis snapshot --sections price,studies,levels`.
+
 ### "Analyze my chart" (full report workflow)
 1. `quote_get` → current price
 2. `data_get_study_values` → all indicator readings
