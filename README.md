@@ -460,3 +460,27 @@ tv analysis snapshot --sections price,studies,levels --filter Example --count 10
 ```
 
 Historical studies require the internal `study.data().valueAt(index)` array layout `[timestamp, ...plotValues]` and numeric `line` plot metadata. These internals have offline fixture coverage, not live runtime verification. Unsupported layouts return nulls and warnings, and missing studies fail explicitly. Pine graphics are best-effort model reads; empty graphics do not prove an indicator draws nothing. No screenshot is part of the snapshot.
+### Bounded history and batch collections
+
+`data_load_history` attempts older-history loading through the existing chart model navigation mechanism. Request `from`/`to` (unix seconds), `count`, or both. Defaults: 5 attempts, 10 seconds, 250ms between attempts; hard caps: 50 attempts, 60 seconds, 100,000 requested bars. It returns actual loaded endpoints and matching bar count, requested coverage, `state`, `reason`, and visible-range restoration status. The loading budget applies to evaluations and waits; restoration has a separate 3-second evaluation allowance.
+
+- `complete` means an unfiltered requested bar count is loaded. Range requests remain `partial` even when both endpoints are covered: missing bars cannot be ruled out.
+- `partial` also reports the attempt limit or an interrupted operation; `timeout` reports the elapsed budget.
+- `exhausted` means consecutive attempts stalled, **not** verified provider exhaustion. `unsupported` reports unavailable bars/navigation/range-preservation APIs.
+
+Navigation triggering history loading is build-dependent and has only been tested offline against chart models. It may stall or be unsupported in a live build. Restoration is attempted in `finally`; inspect `restoration` even when loading succeeds. The active chart must remain fixed during this operation.
+
+`data_get_ohlcv_page` reads already-loaded bars without navigation. Each response contains at most 500 bars (ascending), `has_more`, and `next_before`. Pass the latter as `before` to read the previous page, retaining the same `from`/`to`, symbol and timeframe. Continue until `next_before` is null. Each page labels its actual symbol, timeframe and capture time. Live pages are not immutable snapshots. Existing `data_get_ohlcv` behavior and its 500-bar cap are unchanged.
+
+`batch_run` adds `get_study_values`, `get_pine_lines`, `get_pine_labels`, `get_pine_tables`, `get_pine_boxes`, and `collect_analysis`. The collection action composes OHLCV summary and the five existing readers; it does not depend on another analysis API. Use `study_filter` and `max_items` (default 20, max 50). New collections cap arrays, object keys, nesting and string length (500 characters), with an approximately 24K-character budget per collection. `output_bounded` indicates that detail may be omitted. Use individual data tools for detail. Existing actions remain available. Batches allow at most 100 symbol/timeframe pairs, verify readiness and identity before/after capture, label results with actual symbol/timeframe/capture time, and report symbol/timeframe/range restoration separately. A missing original range is reported as `unavailable`; restoration failures make overall success false.
+
+CLI equivalents:
+
+```sh
+tv history load --count 2000 --max-attempts 5 --timeout-ms 10000
+tv history page --count 500 --from 1700000000 --to 1800000000
+tv history page --count 500 --before 1750000000
+tv batch --symbols NASDAQ:AAPL,NASDAQ:MSFT --timeframes D,60 --action collect_analysis --filter RSI --max-items 10
+```
+
+Offline checks: `bun run test` and `bun run typecheck`. Public Pine compiler CLI tests now require explicit `TV_MCP_TEST_NETWORK=1`; live CDP tests remain separate (`bun run test:live`).

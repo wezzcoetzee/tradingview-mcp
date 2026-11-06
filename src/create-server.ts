@@ -3,6 +3,7 @@ import { registerHealthTools } from './tools/health.js';
 import { registerChartTools } from './tools/chart.js';
 import { registerPineTools } from './tools/pine.js';
 import { registerAnalysisTools } from './tools/analysis.js';
+import { registerHistoryTools } from './tools/history.js';
 import { registerDataTools } from './tools/data.js';
 import { registerCaptureTools } from './tools/capture.js';
 import { registerDrawingTools } from './tools/drawing.js';
@@ -36,6 +37,7 @@ export function createServer(): McpServer {
   registerPineTools(server);
   registerDataTools(server);
   registerAnalysisTools(server);
+  registerHistoryTools(server);
   registerCaptureTools(server);
   registerDrawingTools(server);
   registerAlertTools(server);

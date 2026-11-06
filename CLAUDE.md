@@ -23,6 +23,8 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `data_get_ohlcv` with `summary: true` → compact stats (high, low, range, change%, avg volume, last 5 bars)
 - `data_get_ohlcv` without summary → all bars (use `count` to limit, default 100)
 - `quote_get` → single latest price snapshot
+- `data_load_history` → bounded navigation attempts (`from`/`to` and/or `count`), actual loaded coverage and restoration status. `exhausted` means stalled attempts, not verified provider exhaustion. Range endpoints alone never prove complete history.
+- `data_get_ohlcv_page` → at most 500 loaded bars per response; pass `next_before` as `before` to read older pages. Keep symbol/timeframe fixed. Pages reflect live data, not an immutable snapshot.
 
 ### Analysis evidence (preferred compact capture)
 
@@ -69,7 +71,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 6. `replay_stop` → return to realtime
 
 ### "Screen multiple symbols"
-- `batch_run` with `symbols: ["ES1!", "NQ1!", "YM1!"]` and `action: "screenshot"`, `"get_ohlcv"` (summary) or `"get_strategy_results"`; restores the original symbol/timeframe
+- `batch_run` with `symbols: ["ES1!", "NQ1!", "YM1!"]` and `action: "screenshot"`, `"get_ohlcv"` (summary) or `"get_strategy_results"`; also supports `get_study_values`, `get_pine_lines`, `get_pine_labels`, `get_pine_tables`, `get_pine_boxes` and `collect_analysis` (OHLCV summary plus those readers). Attempts to restore symbol/timeframe/range and reports failures. Use `study_filter` and `max_items` (default 20, max 50). Collections are truncated to bounded output (500 characters/string, approximately 24K characters/collection); original readers remain available for detail.
 - Progress notifications are sent when the client provides a progress token (`batch_run`, and per bar in `replay_step`)
 - `data_get_trades` returns the latest trades with `total`; pass `offset` to page from the oldest
 
@@ -160,3 +162,7 @@ Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines')
 - Call `tv_quit` once chart work is complete unless the user asks to keep TradingView open. Keep it open across multi-symbol work within one request.
 - `tv_quit` can restrict shutdown to sessions this MCP process launched with `only_if_agent_launched: true`. Successful shutdown allows the next chart request to auto-launch again.
 - Manual macOS shutdown: `./scripts/quit_tv_mac.sh`.
+
+### Offline validation
+
+`bun run test` excludes live E2E tests and skips CLI public Pine compiler tests by default. `TV_MCP_TEST_NETWORK=1 bun run test` opts into those compiler network tests. History and batch tests evaluate browser expressions against in-memory chart models; they do not validate live TradingView loading behavior.
