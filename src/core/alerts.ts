@@ -132,7 +132,7 @@ export async function create(options: CreateOptions, deps: Partial<CreateIO> = {
     || (options.resolution && options.resolution !== chart.resolution)) return { success: false, status: 'refused', error: 'Expected active symbol/resolution does not match chart' };
   const request: AlertRequest = { price: options.price, message: options.message ?? '', condition: options.condition ?? 'crossing',
     frequency: options.frequency ?? 'once', resolution: options.resolution ?? chart.resolution,
-    expiry: options.expiry ?? Math.floor(io.now() / 1000) + 30 * 86400, expected_symbol: chart.symbol };
+    expiry: options.expiry ?? Math.ceil(io.now() / 60000) * 60 + 30 * 86400, expected_symbol: chart.symbol };
   const before = await io.list();
   if (before.error) return { success: false, status: 'refused', error: `Cannot verify alert creation: ${before.error}` };
   const opened = await io.evaluate(`(() => {

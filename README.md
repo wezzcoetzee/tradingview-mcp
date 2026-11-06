@@ -490,7 +490,7 @@ Offline checks: `bun run test` and `bun run typecheck`. Public Pine compiler CLI
 
 `alert_create` (CLI: `tv alert create`) keeps the `price` / optional `message` interface.
 Defaults are explicit: `condition: "crossing"`, `frequency: "once"`, active chart
-resolution, empty message, and expiry 30 days after the call. Optional
+resolution, empty message, and expiry 30 days after the call rounded up to the next minute. Optional
 `expected_symbol` refuses the request if the active chart differs (CLI `--symbol`).
 `resolution` must match the chart; switch the chart explicitly first.
 

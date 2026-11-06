@@ -69,7 +69,7 @@ describe('deleteAlerts', () => {
 import { runInNewContext } from 'node:vm';
 import { create, configureDialog, verifyCreatedAlert, type AlertRequest, type CreateIO } from '../src/core/alerts.js';
 const requested: AlertRequest = { price: 123, message: 'level', condition: 'crossing_up', frequency: 'once_per_bar_close',
-  resolution: '5', expiry: 2_000_000_000, expected_symbol: 'EX:A' };
+  resolution: '5', expiry: 2_000_000_040, expected_symbol: 'EX:A' };
 
 function dialogFixture(missing?: string) {
   let writes = 0;
@@ -81,7 +81,7 @@ function dialogFixture(missing?: string) {
     set value(value: string) { writes++; this.stored = value; }
     getAttribute(name: string) { return name === 'aria-label' ? this.label : null; }
     dispatchEvent() {}
-    checkValidity() { return true; }
+    checkValidity() { return this.type !== 'datetime-local' || new Date(this.value).getSeconds() === 0; }
   }
   class Select extends Input {
     options: { textContent: string; value: string; disabled: boolean }[];
@@ -101,7 +101,7 @@ function dialogFixture(missing?: string) {
   const context = { document: { querySelectorAll: () => [dialog] },
     window: { TradingViewApi: { _activeChartWidgetWV: { value: () => ({ symbol: () => 'EX:A', resolution: () => '5' }) } } },
     HTMLInputElement: Input, HTMLSelectElement: Select, HTMLTextAreaElement: Textarea, Event };
-  const run = (submit = false) => runInNewContext(`(${configureDialog.toString()})(${JSON.stringify(requested)}, ${submit})`, context) as { ok: boolean; error?: string };
+  const run = (submit = false, request = requested) => runInNewContext(`(${configureDialog.toString()})(${JSON.stringify(request)}, ${submit})`, context) as { ok: boolean; error?: string };
   return { run, fields, writes: () => writes, submits: () => submits };
 }
 
@@ -131,6 +131,11 @@ describe('exact alert configuration', () => {
     assert.equal(fixture.run(true).ok, false);
     assert.equal(fixture.submits(), 1);
   });
+  it('respects native minute-step expiration validation without submitting', () => {
+    const fixture = dialogFixture();
+    assert.equal(fixture.run(false, { ...requested, expiry: requested.expiry + 1 }).ok, false);
+    assert.equal(fixture.submits(), 0);
+  });
   it('reports list field mismatches and never decodes opaque condition data by guessing', () => {
     const verification = verifyCreatedAlert(requested, { alert_id: 1, symbol: 'EX:B', resolution: '5', condition: { arbitrary: true }, expiration: requested.expiry });
     assert.deepEqual(verification.mismatched, ['symbol']);
@@ -150,7 +155,8 @@ describe('exact alert configuration', () => {
     assert.equal(result.alert_id, 1);
     assert.equal(result.requested?.condition, 'crossing');
     assert.equal(result.requested?.frequency, 'once');
-    assert.equal(result.requested?.expiry, 1 + 30 * 86400);
+    assert.equal(result.requested?.expiry, 60 + 30 * 86400);
+    assert.equal(result.requested?.expiry % 60, 0);
   });
   it('refuses expected symbol mismatch before opening or listing', async () => {
     let calls = 0;
