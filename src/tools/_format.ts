@@ -10,6 +10,7 @@ import type { ReportProgress } from '../core/progress.js';
 
 /** Per-call context handed to a tool's `run`. */
 export interface ToolContext {
+  signal?: AbortSignal;
   /** Set only when the client sent a progressToken; tools with long loops call it after each step. */
   progress?: ReportProgress;
 }
@@ -70,7 +71,7 @@ export function defineTool<Shape extends ZodRawShape = {}>(
 ) {
   const handler = async (args: z.infer<z.ZodObject<Shape>>, extra: ToolExtra) => {
     try {
-      return jsonResult(await run(args, { progress: progressReporter(extra) }));
+      return jsonResult(await run(args, { progress: progressReporter(extra), signal: extra.signal }));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       return jsonResult(onError ? await onError(message, err) : { success: false, error: message }, true);

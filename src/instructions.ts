@@ -22,7 +22,8 @@ Many symbols or timeframes: batch_run (study values/Pine drawings/collect_analys
 Pine Script: pine_set_source, then pine_smart_compile (the default compile; pine_compile is a raw button click), pine_get_errors, pine_get_console, pine_save. pine_get_source can be huge: use from_line/to_line. pine_new and pine_open replace the editor. pine_list_scripts lists saved scripts. pine_analyze (offline lint) and pine_check (server compile) take a source argument and ignore the editor.
 
 Replay: replay_start, replay_step, replay_jump, replay_autoplay, replay_trade, replay_status, replay_stop.
-Drawings: draw_shape, draw_list, draw_get_properties, draw_remove_one, draw_clear. Alerts: alert_create, alert_list, alert_delete.
+Drawings: draw_shape, draw_list, draw_get_properties, draw_remove_one, draw_clear. Alerts: alert_create, alert_list, alert_delete. alert_create refuses unavailable exact controls and reports unverified creation when list fields cannot prove the requested configuration.
+Process-local watches: watch_start, watch_events, watch_stop. Only watch_events samples, with bounded retention and TTL. Clients (including Hermes) must schedule/resume themselves; this server cannot wake them. Use returned cursor and check dropped/stopped. Crossings between samples can be missed. TradingView alerts persist independently; watches do not.
 UI automation (last resort): ui_open_panel, ui_fullscreen, ui_click, ui_find_element, ui_hover, ui_scroll, ui_mouse_click, ui_keyboard, ui_type_text. ui_evaluate exists only when TRADINGVIEW_MCP_ALLOW_EVAL=1.
 
 Workflows are also offered as prompts (pine-develop, multi-symbol-scan, replay-practice, strategy-report, swing-trader-chart-analysis, position-chart-analysis).`;

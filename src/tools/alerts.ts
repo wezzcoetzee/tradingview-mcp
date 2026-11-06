@@ -8,13 +8,18 @@ const alertId = z.union([z.number(), z.string()]);
 export function registerAlertTools(server: McpServer) {
   defineTool(server, {
     name: 'alert_create',
-    description: 'Create a price alert via the TradingView alert dialog. Note: condition must be set manually in the dialog before clicking Create.',
+    description: 'Configure an exact price alert on the active chart. Defaults: crossing, only once, chart resolution, expiry in 30 days. Refuses unsupported dialog controls; submitted alerts remain unverified until list condition/frequency can be decoded. Never automatically retry submitted:true.',
     inputSchema: {
       price: z.coerce.number().describe('Price level for the alert'),
-      message: z.string().optional().describe('Alert message'),
+      message: z.string().optional().describe('Alert message (default empty)'),
+      condition: z.enum(core.conditions).optional(),
+      frequency: z.enum(core.frequencies).optional(),
+      resolution: z.string().optional().describe('Must match active chart resolution'),
+      expiry: z.number().int().optional().describe('Future unix seconds; defaults to 30 days'),
+      expected_symbol: z.string().optional().describe('Refuse if active chart symbol differs'),
     },
     annotations: WRITE,
-    run: ({ price, message }) => core.create({ price, message }),
+    run: options => core.create(options),
   });
 
   defineTool(server, {

@@ -21,6 +21,7 @@ import './commands/capture.js';
 import './commands/replay.js';
 import './commands/drawing.js';
 import './commands/alerts.js';
+import './commands/monitor.js';
 import './commands/watchlist.js';
 import './commands/layout.js';
 import './commands/indicator.js';

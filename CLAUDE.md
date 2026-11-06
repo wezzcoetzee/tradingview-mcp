@@ -91,7 +91,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `draw_clear` → remove all
 
 ### "Manage alerts"
-- `alert_create` → set price alert (condition is set in the TradingView dialog; returns `alert_id` once confirmed in `alert_list`)
+- `alert_create` → exact price alert request (condition/frequency/resolution/expiry/message/expected_symbol). Defaults: crossing, once, active resolution, 30-day expiry. Refuses unknown/custom dialog controls. A new list ID is unverified, never proof of the requested condition. Check status/verification; never retry submitted or submission_attempted requests automatically.
 - `alert_list` → view active alerts
 - `alert_delete` → remove alerts by `alert_id` (from `alert_list`) or `delete_all: true`; verified by re-listing
 
@@ -166,3 +166,11 @@ Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines')
 ### Offline validation
 
 `bun run test` excludes live E2E tests and skips CLI public Pine compiler tests by default. `TV_MCP_TEST_NETWORK=1 bun run test` opts into those compiler network tests. History and batch tests evaluate browser expressions against in-memory chart models; they do not validate live TradingView loading behavior.
+
+### Process-local watches
+
+- `watch_start`, `watch_events`, `watch_stop` use a per-server `WatchManager` in `core/monitor.ts`; CLI equivalents are JSONL operations in `tv watch session` (one process).
+- On-call sampling only. Hermes/client must schedule/resume itself. No server wakeups, watch timers, or CDP subscriptions. Missed movements between calls cannot be recovered.
+- Identity is page + weak widget ID + symbol + resolution. Identity changes stop sampling. Closed-bar confirmation requires a subsequent bar and its matching previous-bar record; never infer close from wall clock.
+- Retention is bounded; return/read cursor, oldest_cursor, and dropped. TTL is enforced at each operation, with lazy pruning. Server/CLI close clears watches.
+- Offline tests inject samples or execute browser snippets in isolated fixtures. Do not turn fixture assumptions about alert DOM controls or raw alert condition schemas into claims of live compatibility.
