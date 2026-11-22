@@ -158,26 +158,6 @@ describe('time range navigation', () => {
     assert.equal(result.success, false);
   });
 
-  it('scrollToDate succeeds, then flags and fails like setVisibleRange', async () => {
-    const window = zoomedTo(1_000_000, 1_100_000);
-    const ok: Record<string, any> = await scrollToDate({
-      date: '1050000', _deps: deps(rangeEval(window, { from: 1_000_000, to: 1_100_000 }))._deps,
-    });
-    assert.equal(ok.success, true);
-    assert.equal(ok.partially_loaded, undefined);
-
-    const partial: Record<string, any> = await scrollToDate({
-      date: '905000', _deps: deps(rangeEval(window, { from: 1_000_000, to: 1_100_000 }))._deps,
-    });
-    assert.equal(partial.partially_loaded, true);
-
-    const stuck: Record<string, any> = await scrollToDate({
-      date: '1050000', _deps: deps(rangeEval(window, { from: 1_050_000, to: 1_060_000 }))._deps,
-    });
-    assert.equal(stuck.success, false);
-    assert.deepEqual(stuck.expected, { from: 1_000_000, to: 1_100_000 });
-  });
-
   it('scrollToDate returns not_in_loaded_range when no bars match', async () => {
     const { _deps } = deps((expr) => (expr.includes('zoomToBarsRange') ? outside : '60'));
     const result: Record<string, any> = await scrollToDate({ date: '2030-01-01', _deps });

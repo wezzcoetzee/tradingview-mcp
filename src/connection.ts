@@ -296,9 +296,7 @@ export async function disconnect() {
   if (current) drop(current);
 }
 
-// --- Direct API path helpers ---
-// Each returns the STRING expression path after verifying it exists.
-// Callers use the returned string in their own evaluate() calls.
+// Each helper returns the expression string for a path after verifying it exists.
 
 async function verifyAndReturn(path: string, name: string) {
   const exists = await evaluate(`typeof (${path}) !== 'undefined' && (${path}) !== null`);

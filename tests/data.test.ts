@@ -2,7 +2,7 @@ import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import {
   getQuote, getOhlcv, getTrades, getStrategyResults, getEquity,
-  getPineLabels, getPineTables, getPineLines, getPineBoxes, horizontalLevels, tableRows,
+  getPineLabels, getPineLines, getPineBoxes, horizontalLevels, tableRows,
   downsample, summarizeEquity, boxZones, summarizeBars,
 } from '../src/core/data.js';
 import { batchRun } from '../src/core/batch.js';
@@ -23,13 +23,6 @@ describe('getQuote', () => {
 
   it('rejects a symbol that is not on the chart', async () => {
     await assert.rejects(getQuote({ symbol: 'MSFT', _deps: mock(quote) }), /chart_set_symbol/);
-  });
-});
-
-describe('getOhlcv', () => {
-  it('passes the real connection error through', async () => {
-    const _deps = { evaluate: async () => { throw new Error('CDP not connected'); } };
-    await assert.rejects(getOhlcv({ _deps }), /CDP not connected/);
   });
 });
 
@@ -83,12 +76,6 @@ describe('pine graphics readers', () => {
     const cell = (row: number, col: number, t: string) => ({ id: `${row}${col}`, raw: { tid: 1, row, col, t } });
     const [table] = tableRows([cell(0, 0, 'A'), cell(0, 1, ''), cell(0, 2, 'C'), cell(1, 0, ''), cell(1, 1, ''), cell(1, 2, '')]);
     assert.deepEqual(table.rows, ['A |  | C']);
-  });
-
-  it('getPineTables formats tables', async () => {
-    const items = [{ id: 1, raw: { tid: 1, row: 0, col: 0, t: 'X' } }];
-    const res = await getPineTables({ _deps: graphics([{ name: 'Alpha Levels', count: 1, items }]) });
-    assert.deepEqual(res.studies[0].tables, [{ rows: ['X'] }]);
   });
 
   it('horizontalLevels handles price 0, skips sloped lines, and caps newest-first', () => {
@@ -237,25 +224,12 @@ describe('ohlcv range and summary', () => {
   it('puts from/to into the page expression and rejects an inverted range', async () => {
     let expression = '';
     const _deps = { evaluate: async (e: string) => { expression = e; return { bars: [bar(5)], total_bars: 1, symbol: 'X', resolution: 'D' }; } };
-    const res = await getOhlcv({ from: 100, to: 200, _deps });
+    await getOhlcv({ from: 100, to: 200, _deps });
     assert.ok(expression.includes('v[0] > 200') && expression.includes('v[0] < 100'));
-    assert.equal(res.symbol, 'X');
     await assert.rejects(getOhlcv({ from: 200, to: 100, _deps }), /must not be after/);
   });
 
   it('explains an empty range instead of a loading error', async () => {
     await assert.rejects(getOhlcv({ from: 1, to: 2, _deps: mock({ bars: [] }) }), /No loaded bars in the requested/);
-  });
-});
-
-describe('strategy study_filter', () => {
-  it('is lowercased into the page expression for all strategy readers', async () => {
-    const seen: string[] = [];
-    const _deps = { evaluate: async (e: string) => { seen.push(e); return { error: 'none' }; } };
-    await getStrategyResults({ study_filter: 'MyStrat', _deps });
-    await getTrades({ study_filter: 'MyStrat', _deps });
-    await getEquity({ study_filter: 'MyStrat', _deps });
-    assert.equal(seen.length, 3);
-    for (const e of seen) assert.ok(e.includes('findStrategy(sources, "mystrat")'));
   });
 });

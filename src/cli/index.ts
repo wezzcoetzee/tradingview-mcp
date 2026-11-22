@@ -1,15 +1,6 @@
 #!/usr/bin/env bun
 
-/**
- * tv — CLI for TradingView Desktop via Chrome DevTools Protocol.
- * Outputs JSON to stdout. Errors to stderr.
- * Exit codes: 0 success, 1 error, 2 connection failure.
- *
- * Run `tv --help` for the command list.
- * Pipe-friendly: every command outputs JSON for use with jq.
- */
-
-// Register all commands
+/** Exit codes: 0 success, 1 error, 2 connection failure. JSON on stdout, errors on stderr. */
 import './commands/health.js';
 import './commands/chart.js';
 import './commands/data.js';

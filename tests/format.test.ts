@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { zBool } from '../src/tools/_format.js';
+import { jsonResult, zBool } from '../src/tools/_format.js';
 
 describe('zBool', () => {
   it('parses booleans and "true"/"false" strings without Boolean() coercion', () => {
@@ -11,5 +11,12 @@ describe('zBool', () => {
 
   it('rejects other strings', () => {
     expect(zBool.safeParse('yes').success).toBe(false);
+  });
+});
+
+describe('jsonResult', () => {
+  it('flags success:false payloads as errors', () => {
+    expect(jsonResult({ success: false }).isError).toBe(true);
+    expect(jsonResult({ success: true }).isError).toBeUndefined();
   });
 });

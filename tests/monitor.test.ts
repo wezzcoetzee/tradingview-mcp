@@ -1,6 +1,10 @@
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { registerMonitorTools } from '../src/tools/monitor.js';
 import { WatchManager, SAMPLE_JS, type Sample, type Direction } from '../src/core/monitor.js';
 
 const bar = (close: number, time = 100, extra: Partial<Sample> = {}): Sample => ({ identity: 'page:1', symbol: 'EX:A', resolution: '1', time, close, ...extra });
@@ -126,10 +130,6 @@ it('executes the actual browser sampler against bar/widget APIs, with weak widge
   assert.notEqual((runInNewContext(SAMPLE_JS, context) as Sample).identity, first.identity);
 });
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { registerMonitorTools } from '../src/tools/monitor.js';
 it('clears watches when the MCP transport closes', async () => {
   const manager = new WatchManager(async () => bar(9));
   const server = new McpServer({ name: 'test', version: '0' });

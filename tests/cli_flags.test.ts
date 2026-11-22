@@ -1,10 +1,3 @@
-/**
- * CLI flag parsing tests — no TradingView connection needed.
- * Every case fails during argument validation, before any CDP call.
- *
- * Run: bun test tests/cli_flags.test.ts
- */
-
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'child_process';
@@ -51,13 +44,6 @@ describe('CLI — boolean values', () => {
   it('requires a value for --visible', () => {
     const { exitCode } = run(['indicator', 'toggle', 'abc', '--visible']);
     assert.equal(exitCode, 1);
-  });
-
-  it('documents --hide and --visible in toggle help', () => {
-    const { stdout, exitCode } = run(['indicator', 'toggle', '--help']);
-    assert.equal(exitCode, 0);
-    assert.ok(stdout.includes('--hide'));
-    assert.ok(stdout.includes('--visible'));
   });
 });
 

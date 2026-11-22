@@ -1,6 +1,3 @@
-/**
- * Core drawing logic.
- */
 import { evaluate as _evaluate, getChartApi as _getChartApi, safeString, requireFinite } from '../connection.js';
 import type { CoreDeps, WithDeps } from './_page.js';
 import { waitFor } from '../wait.js';

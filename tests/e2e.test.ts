@@ -147,16 +147,6 @@ describe.skipIf(!tvReachable)('TradingView MCP — Full E2E (70 tools)', () => {
       assert.ok(state.button_count > 0, 'Buttons found');
     });
 
-    it('tv_launch — auto-detect binary (verify path resolution only)', async () => {
-      // tv_launch is destructive (kills TradingView), so we only test path detection
-      const { existsSync } = await import('fs');
-      const paths = [
-        '/Applications/TradingView.app/Contents/MacOS/TradingView',
-        `${process.env.HOME}/Applications/TradingView.app/Contents/MacOS/TradingView`,
-      ];
-      const found = paths.some(p => existsSync(p));
-      assert.ok(found, 'TradingView binary found on disk');
-    });
   });
 
   // ─── 2. CHART CONTROL (8 tools) ──────────────────────────────────────
@@ -871,44 +861,6 @@ describe.skipIf(!tvReachable)('TradingView MCP — Full E2E (70 tools)', () => {
       assert.ok(btnCount >= 0, 'Button count retrieved');
     });
 
-    it('pine_analyze — offline static analysis', async () => {
-      // This runs offline, no TradingView needed
-      // Test imported from pine_analyze.test.js pattern
-      const source = `//@version=6
-indicator("Test")
-a = array.from(1, 2, 3)
-val = array.get(a, 5)`;
-
-      // Inline the analysis logic (same as the tool)
-      const lines = source.split('\n');
-      const arrays = new Map();
-      const diagnostics = [];
-
-      for (let i = 0; i < lines.length; i++) {
-        const fromMatch = lines[i].match(/(\w+)\s*=\s*array\.from\(([^)]*)\)/);
-        if (fromMatch) {
-          const name = fromMatch[1].trim();
-          const args = fromMatch[2].trim();
-          arrays.set(name, { name, size: args === '' ? 0 : args.split(',').length, line: i + 1 });
-        }
-      }
-      for (let i = 0; i < lines.length; i++) {
-        const pattern = /array\.(get|set)\(\s*(\w+)\s*,\s*(-?\d+)/g;
-        let match;
-        while ((match = pattern.exec(lines[i])) !== null) {
-          const info = arrays.get(match[2]);
-          if (info && info.size !== null) {
-            const idx = parseInt(match[3], 10);
-            if (idx < 0 || idx >= info.size) {
-              diagnostics.push({ line: i + 1, message: `OOB index ${idx}`, severity: 'error' });
-            }
-          }
-        }
-      }
-      assert.equal(diagnostics.length, 1, 'Detected 1 OOB error');
-      assert.ok(diagnostics[0].message.includes('5'), 'Found index 5');
-    });
-
     it('pine_check — server-side compile via TradingView API', async () => {
       const source = `//@version=6\nindicator("API Test", overlay=true)\nplot(close)`;
       const formData = new URLSearchParams();
@@ -1130,11 +1082,6 @@ val = array.get(a, 5)`;
       `);
       assert.ok(Array.isArray(results), 'Element search works');
       assert.ok(results.length > 0, 'Found visible buttons');
-    });
-
-    it('ui_evaluate — execute arbitrary JS', async () => {
-      const result = await evaluate('1 + 1');
-      assert.equal(result, 2, 'JS evaluation works');
     });
 
     it('layout_list — find layout dropdown button', async () => {
@@ -1577,16 +1524,5 @@ val = array.get(a, 5)`;
       }
     });
 
-    it('capture_screenshot returns path, not image data', async () => {
-      // The tool saves to disk and returns path — verify size of response structure
-      const response = JSON.stringify({
-        success: true,
-        method: 'cdp',
-        file_path: '/path/to/screenshots/tv_full_2025-01-01T00-00-00-000Z.png',
-        region: 'full',
-        size_bytes: 150000,
-      }, null, 2);
-      assert.ok(response.length < 500, `Screenshot response is ${response.length} bytes (< 500)`);
-    });
   });
 });

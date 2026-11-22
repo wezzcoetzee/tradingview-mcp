@@ -1,6 +1,3 @@
-/**
- * Core batch execution logic.
- */
 import { evaluate as _evaluate, getChartApi as _getChartApi, getChartCollection as _getChartCollection, safeString } from '../connection.js';
 import { waitForChartReady as _waitForChartReady } from '../wait.js';
 import { getOhlcv, getStudyValues, getPineLines, getPineLabels, getPineTables, getPineBoxes } from './data.js';

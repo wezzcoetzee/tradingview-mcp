@@ -1,6 +1,3 @@
-/**
- * Core UI automation logic.
- */
 import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
 import { sleep } from './_page.js';
 
@@ -160,7 +157,6 @@ export async function layoutSwitch({ name }: { name: string }) {
   `);
   if (!result?.success) throw new Error(result?.error || 'Unknown error switching layout');
 
-  // Handle "unsaved changes" confirmation dialog
   await sleep(500);
   const dismissed = await evaluate(`
     (function() {

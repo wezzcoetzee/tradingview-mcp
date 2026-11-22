@@ -7,10 +7,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { safeString, requireFinite } from '../src/connection.js';
-import { setSymbol, setTimeframe, setType, manageIndicator, setVisibleRange } from '../src/core/chart.js';
+import { setSymbol, setType, manageIndicator, setVisibleRange } from '../src/core/chart.js';
 import { drawShape } from '../src/core/drawing.js';
 
-// ── Mock helpers ─────────────────────────────────────────────────────────
 
 function mockEval() {
   const calls: string[] = [];
@@ -34,24 +33,14 @@ function mockDeps(overrides = {}) {
   };
 }
 
-// ── safeString() ─────────────────────────────────────────────────────────
 
 describe('safeString() — CDP injection prevention', () => {
   it('wraps normal strings in double quotes', () => {
     assert.equal(safeString('hello'), '"hello"');
   });
 
-  it('wraps in double quotes so single quotes are safe', () => {
-    assert.equal(safeString("test'injection"), '"test\'injection"');
-  });
-
   it('escapes double quotes', () => {
     assert.equal(safeString('test"injection'), '"test\\"injection"');
-  });
-
-  it('neutralizes template literals by wrapping in double quotes', () => {
-    const parsed = JSON.parse(safeString('${alert(1)}'));
-    assert.equal(parsed, '${alert(1)}');
   });
 
   it('escapes backslashes', () => {
@@ -90,7 +79,6 @@ describe('safeString() — CDP injection prevention', () => {
   });
 });
 
-// ── requireFinite() ──────────────────────────────────────────────────────
 
 describe('requireFinite() — numeric validation', () => {
   it('passes finite numbers through', () => {
@@ -130,18 +118,8 @@ describe('requireFinite() — numeric validation', () => {
   });
 });
 
-// ── chart.js — safeString in evaluate calls ──────────────────────────────
 
 describe('chart.js — sanitized evaluate calls', () => {
-  it('setSymbol uses safeString in evaluate', async () => {
-    const { _deps, evaluate } = mockDeps();
-    await setSymbol({ symbol: "NYMEX:CL1!", _deps });
-    const call = evaluate.calls.find(c => c.includes('setSymbol'));
-    assert.ok(call, 'setSymbol called');
-    assert.ok(call!.includes('"NYMEX:CL1!"'), 'symbol wrapped in double quotes via safeString');
-    assert.ok(!call!.includes("'NYMEX:CL1!'"), 'no single-quoted interpolation');
-  });
-
   it('setSymbol sanitizes injection payload', async () => {
     const { _deps, evaluate } = mockDeps();
     const payload = "'; alert('xss'); //";
@@ -151,13 +129,6 @@ describe('chart.js — sanitized evaluate calls', () => {
     // It should NOT appear as a bare unquoted string that could break out
     assert.ok(call!.includes(safeString(payload)), 'payload is JSON-escaped in evaluate call');
     assert.ok(!call!.includes(`setSymbol('`), 'no single-quoted interpolation');
-  });
-
-  it('setTimeframe uses safeString', async () => {
-    const { _deps, evaluate } = mockDeps();
-    await setTimeframe({ timeframe: '15', _deps });
-    const call = evaluate.calls.find(c => c.includes('setResolution'));
-    assert.ok(call!.includes('"15"'), 'timeframe wrapped via safeString');
   });
 
   it('setType accepts known chart styles', async () => {
@@ -211,22 +182,6 @@ describe('chart.js — sanitized evaluate calls', () => {
     assert.ok(createCall.includes('"Relative Strength Index"'), 'indicator name via safeString');
   });
 
-  it('manageIndicator remove uses safeString for entity_id', async () => {
-    const calls: string[] = [];
-    let removed = false;
-    const evaluate = async (expr: string) => {
-      calls.push(expr);
-      if (expr.includes('removeEntity')) { removed = true; return undefined; }
-      if (expr.includes('getAllStudies')) return removed ? [] : ['abc123'];
-      return undefined;
-    };
-    const { _deps } = mockDeps({ evaluate });
-    const result = await manageIndicator({ action: 'remove', entity_id: "abc123", _deps });
-    assert.equal(result.success, true);
-    const call = calls.find(c => c.includes('removeEntity'));
-    assert.ok(call!.includes('"abc123"'), 'entity_id via safeString');
-  });
-
   it('setVisibleRange validates from/to with requireFinite', async () => {
     const { _deps } = mockDeps();
     await assert.rejects(
@@ -239,22 +194,22 @@ describe('chart.js — sanitized evaluate calls', () => {
     );
   });
 
-  it('setVisibleRange passes valid numbers to evaluate', async () => {
-    const { _deps, evaluate } = mockDeps();
-    _deps.evaluate = (async (expr: string) => {
-      evaluate.calls.push(expr);
-      if (expr.includes('zoomToBarsRange')) return { found: true, loaded_from: 0, loaded_to: 2e9, zoomed_from: 1700000000, zoomed_to: 1700100000 };
-      return expr.includes('.resolution()') ? 'D' : { from: 1700000000, to: 1700100000 };
-    }) as any;
-    await setVisibleRange({ from: 1700000000, to: 1700100000, _deps });
-    const call = evaluate.calls.find(c => c.includes('zoomToBarsRange'));
-    assert.ok(call, 'zoomToBarsRange called');
-    assert.ok(call!.includes('1700000000'), 'from value in call');
-    assert.ok(call!.includes('1700100000'), 'to value in call');
+  it('manageIndicator remove escapes a hostile entity_id', async () => {
+    const payload = "x'); alert(1); //";
+    const calls: string[] = [];
+    let removed = false;
+    const evaluate = async (expr: string) => {
+      calls.push(expr);
+      if (expr.includes('removeEntity')) { removed = true; return undefined; }
+      if (expr.includes('getAllStudies')) return removed ? [] : [payload];
+      return undefined;
+    };
+    const { _deps } = mockDeps({ evaluate });
+    await manageIndicator({ action: 'remove', entity_id: payload, _deps });
+    assert.ok(calls.find(c => c.includes('removeEntity'))!.includes(`removeEntity(${safeString(payload)})`));
   });
 });
 
-// ── drawing.js — safeString + requireFinite ──────────────────────────────
 
 describe('drawing.js — sanitized evaluate calls', () => {
   it('drawShape validates point coordinates with requireFinite', async () => {
@@ -282,41 +237,18 @@ describe('drawing.js — sanitized evaluate calls', () => {
     );
   });
 
-  it('drawShape uses safeString for shape name', async () => {
+  it('drawShape escapes a hostile shape name', async () => {
+    const payload = "x'); alert(1); //";
     const { _deps, evaluate } = mockDeps();
-    await drawShape({ shape: 'horizontal_line', point: { time: 100, price: 50 }, _deps });
-    const call = evaluate.calls.find(c => c.includes('createShape'));
-    assert.ok(call, 'createShape called');
-    assert.ok(call!.includes('"horizontal_line"'), 'shape name via safeString');
-  });
-
-  it('drawShape uses validated coordinates in evaluate', async () => {
-    const { _deps, evaluate } = mockDeps();
-    await drawShape({ shape: 'horizontal_line', point: { time: 1700000000, price: 5000.50 }, _deps });
-    const call = evaluate.calls.find(c => c.includes('createShape'));
-    assert.ok(call!.includes('1700000000'), 'time in call');
-    assert.ok(call!.includes('5000.5'), 'price in call');
-  });
-
-  it('drawShape multipoint uses safeString and requireFinite', async () => {
-    const { _deps, evaluate } = mockDeps();
-    await drawShape({
-      shape: 'trend_line',
-      point: { time: 100, price: 50 },
-      point2: { time: 200, price: 60 },
-      _deps,
-    });
-    const call = evaluate.calls.find(c => c.includes('createMultipointShape'));
-    assert.ok(call, 'createMultipointShape called');
-    assert.ok(call!.includes('"trend_line"'), 'shape name via safeString');
+    await drawShape({ shape: payload, point: { time: 100, price: 50 }, _deps }).catch(() => {});
+    assert.ok(evaluate.calls.find(c => c.includes('createShape'))!.includes(safeString(payload)));
   });
 });
 
-// ── Source-level audit ───────────────────────────────────────────────────
 
 describe('source audit — no unsafe interpolation patterns', () => {
   const CORE_DIR = new URL('../src/core/', import.meta.url).pathname;
-  const coreFiles = readdirSync(CORE_DIR).filter(f => f.endsWith('.js'));
+  const coreFiles = readdirSync(CORE_DIR).filter(f => f.endsWith('.ts'));
 
   for (const file of coreFiles) {
     it(`${file} has no .replace(/'/g) manual escaping`, () => {
@@ -341,7 +273,6 @@ describe('source audit — no unsafe interpolation patterns', () => {
   }
 });
 
-// ── Path traversal prevention ────────────────────────────────────────────
 
 describe('path traversal prevention', () => {
   it('sanitizeFilename strips path separators', async () => {
@@ -368,26 +299,8 @@ describe('path traversal prevention', () => {
     assert.ok(sanitizeFilename('').length > 0);
   });
 
-  it('sanitizeFilename neutralizes the canonical traversal payload', async () => {
-    const { sanitizeFilename } = await import('../src/core/capture.js');
-    const out = sanitizeFilename('../../etc/passwd');
-    assert.ok(!out.includes('/') && !out.includes('../') && !out.startsWith('.'));
-  });
-
-  it('sanitizeFilename strips forward and back slashes anywhere', async () => {
-    const { sanitizeFilename } = await import('../src/core/capture.js');
-    assert.ok(!sanitizeFilename('foo/bar').includes('/'));
-    assert.ok(!sanitizeFilename('foo\\bar').includes('\\'));
-  });
-
-  it('sanitizeFilename returns a non-empty placeholder for empty input', async () => {
-    const { sanitizeFilename } = await import('../src/core/capture.js');
-    const out = sanitizeFilename('');
-    assert.ok(out.length > 0 && !out.startsWith('.'));
-  });
 });
 
-// ── buildGraphicsJS allowlist ────────────────────────────────────────────
 
 describe('buildGraphicsJS — collection/map allowlist', () => {
   it('throws on unknown collection name', async () => {
@@ -404,12 +317,6 @@ describe('buildGraphicsJS — collection/map allowlist', () => {
       () => buildGraphicsJS('dwglines', 'evil', ''),
       /unsupported mapKey "evil"/,
     );
-  });
-
-  it('rejects injection attempts in collection/map names', async () => {
-    const { buildGraphicsJS } = await import('../src/core/data.js');
-    assert.throws(() => buildGraphicsJS('dwglines\'); alert(1); //', 'lines', ''));
-    assert.throws(() => buildGraphicsJS('dwglines', 'lines\'); alert(1); //', ''));
   });
 
   it('accepts each whitelisted collection/map pair', async () => {

@@ -1,4 +1,3 @@
-// Minimal typings for the parts of chrome-remote-interface this project uses.
 declare module 'chrome-remote-interface' {
   type Params = Record<string, unknown>;
   // Command results come straight from CDP JSON.

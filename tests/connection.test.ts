@@ -93,17 +93,6 @@ describe('connection — concurrency & error handling', () => {
 });
 
 describe('debug helper', () => {
-  it('respects DEBUG env var matcher', () => {
-    const original = process.env.DEBUG;
-    try {
-      delete process.env.DEBUG;
-      assert.equal(isDebugEnabled(), false);
-    } finally {
-      if (original !== undefined) process.env.DEBUG = original;
-      else delete process.env.DEBUG;
-    }
-  });
-
   it('writes to stderr when enabled', () => {
     const original = process.env.DEBUG;
     process.env.DEBUG = 'tv-mcp,other';

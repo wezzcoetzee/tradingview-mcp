@@ -20,7 +20,6 @@ export function registerWatchlistTools(server: McpServer) {
     annotations: WRITE,
     run: ({ symbol }) => core.add({ symbol }),
     onError: async (error) => {
-      // Try to close any open search/input on error
       try {
         const { getClient } = await import('../connection.js');
         const c = await getClient();

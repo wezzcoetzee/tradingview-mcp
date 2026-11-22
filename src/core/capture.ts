@@ -1,6 +1,3 @@
-/**
- * Core screenshot/capture logic.
- */
 import { getClient, evaluate, evaluateAsync, KNOWN_PATHS } from '../connection.js';
 import { hiddenWindowNote } from './_page.js';
 import { writeFileSync, mkdirSync } from 'fs';

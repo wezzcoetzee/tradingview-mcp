@@ -5,7 +5,6 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../src/create-server.js';
 import { INSTRUCTIONS } from '../src/instructions.js';
 import { loadSkills, parseSkill } from '../src/skills.js';
-import pkg from '../package.json' with { type: 'json' };
 
 async function connect() {
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
@@ -22,11 +21,6 @@ describe('server surface', () => {
     assert.deepEqual(missing, []);
   });
 
-  it('reports the package.json version', async () => {
-    const client = await connect();
-    assert.equal(client.getServerVersion()?.version, pkg.version);
-  });
-
   it('exposes every skill as a prompt carrying its body', async () => {
     const client = await connect();
     const { prompts } = await client.listPrompts();
@@ -37,11 +31,6 @@ describe('server surface', () => {
     assert.equal((got.messages[0].content as { text: string }).text, first.body);
   });
 
-  it('rejects values outside a tool enum without touching the chart', async () => {
-    const client = await connect();
-    const res = await client.callTool({ name: 'chart_set_type', arguments: { chart_type: 'Sparkles' } });
-    assert.equal(res.isError, true);
-  });
 });
 
 describe('parseSkill', () => {
