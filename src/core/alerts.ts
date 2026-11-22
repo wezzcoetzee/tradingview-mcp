@@ -31,10 +31,6 @@ export interface AlertRequest {
   expiry: number;
   expected_symbol: string;
 }
-export function findNewAlert<T extends AlertSummary>(before: AlertSummary[], after: T[]): T | undefined {
-  const known = new Set(before.map(a => String(a.alert_id)));
-  return after.find(a => !known.has(String(a.alert_id)));
-}
 
 /** Native, exactly labelled controls only. Unknown/custom layouts fail before any field writes. */
 export function configureDialog(request: AlertRequest, submit = false) {

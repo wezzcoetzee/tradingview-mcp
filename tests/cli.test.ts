@@ -7,7 +7,7 @@
 
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
-import { execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { writeFileSync, unlinkSync } from 'fs';
