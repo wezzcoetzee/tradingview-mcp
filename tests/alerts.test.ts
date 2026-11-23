@@ -1,17 +1,7 @@
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
-import { findNewAlert, deleteAlerts } from '../src/core/alerts.js';
-
-describe('findNewAlert', () => {
-  it('returns the alert whose id was not present before', () => {
-    const found = findNewAlert([{ alert_id: 1 }], [{ alert_id: 1 }, { alert_id: 2 }]);
-    assert.equal(found?.alert_id, 2);
-  });
-
-  it('returns undefined when nothing new appeared', () => {
-    assert.equal(findNewAlert([{ alert_id: 1 }], [{ alert_id: 1 }]), undefined);
-  });
-});
+import { runInNewContext } from 'node:vm';
+import { create, configureDialog, deleteAlerts, verifyCreatedAlert, type AlertRequest, type CreateIO } from '../src/core/alerts.js';
 
 describe('deleteAlerts', () => {
   const makeIO = (initial: { alert_id: number }[], removes = true) => {
@@ -65,9 +55,7 @@ describe('deleteAlerts', () => {
   });
 });
 
-// Run the shipped dialog code in an isolated DOM-shaped fixture, without CDP or app sessions.
-import { runInNewContext } from 'node:vm';
-import { create, configureDialog, verifyCreatedAlert, type AlertRequest, type CreateIO } from '../src/core/alerts.js';
+// Dialog code runs in an isolated DOM-shaped fixture, without CDP or app sessions.
 const requested: AlertRequest = { price: 123, message: 'level', condition: 'crossing_up', frequency: 'once_per_bar_close',
   resolution: '5', expiry: 2_000_000_040, expected_symbol: 'EX:A' };
 

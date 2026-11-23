@@ -75,7 +75,6 @@ export function cdpBaseUrl(port = cdpPort): string {
   return `http://${CDP_HOST}:${port}`;
 }
 
-// Known direct API paths discovered via live probing (see PROBE_RESULTS.md)
 const KNOWN_PATHS = {
   chartApi: 'window.TradingViewApi._activeChartWidgetWV.value()',
   chartWidgetCollection: 'window.TradingViewApi._chartWidgetCollection',
@@ -84,14 +83,6 @@ const KNOWN_PATHS = {
   alertService: 'window.TradingViewApi._alertService',
   chartApiInstance: 'window.ChartApiInstance',
   mainSeriesBars: 'window.TradingViewApi._activeChartWidgetWV.value()._chartWidget.model().mainSeries().bars()',
-  // Phase 1: Strategy data — model().dataSources() → find strategy → .performance().value(), .ordersData(), .reportData()
-  strategyStudy: 'chart._chartWidget.model().model().dataSources()',
-  // Phase 2: Layouts — getSavedCharts(cb), loadChartFromServer(id)
-  layoutManager: 'window.TradingViewApi.getSavedCharts',
-  // Phase 5: Symbol search — searchSymbols(query) returns Promise
-  symbolSearchApi: 'window.TradingViewApi.searchSymbols',
-  // Phase 6: Pine scripts — REST API at pine-facade.tradingview.com/pine-facade/list/?filter=saved
-  pineFacadeApi: 'https://pine-facade.tradingview.com/pine-facade',
 };
 
 export { KNOWN_PATHS };
@@ -305,9 +296,7 @@ export async function disconnect() {
   if (current) drop(current);
 }
 
-// --- Direct API path helpers ---
-// Each returns the STRING expression path after verifying it exists.
-// Callers use the returned string in their own evaluate() calls.
+// Each helper returns the expression string for a path after verifying it exists.
 
 async function verifyAndReturn(path: string, name: string) {
   const exists = await evaluate(`typeof (${path}) !== 'undefined' && (${path}) !== null`);
@@ -325,14 +314,6 @@ export async function getChartCollection() {
   return verifyAndReturn(KNOWN_PATHS.chartWidgetCollection, 'Chart Widget Collection');
 }
 
-export async function getBottomBar() {
-  return verifyAndReturn(KNOWN_PATHS.bottomWidgetBar, 'Bottom Widget Bar');
-}
-
 export async function getReplayApi() {
   return verifyAndReturn(KNOWN_PATHS.replayApi, 'Replay API');
-}
-
-export async function getMainSeriesBars() {
-  return verifyAndReturn(KNOWN_PATHS.mainSeriesBars, 'Main Series Bars');
 }

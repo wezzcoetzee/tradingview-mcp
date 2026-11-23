@@ -1,6 +1,3 @@
-/**
- * Core chart control logic.
- */
 import { safeString, requireFinite, requireText } from '../connection.js';
 import { waitFor } from '../wait.js';
 import { parseJsonObject } from './json.js';

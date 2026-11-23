@@ -10,7 +10,7 @@ server.server.onclose = () => {
   void disconnect();
 };
 
-// Startup notice (stderr so it doesn't interfere with MCP stdio protocol)
+// stderr: stdout carries the MCP stdio protocol
 process.stderr.write('⚠  tradingview-mcp  |  Unofficial tool. Not affiliated with TradingView Inc. or Anthropic.\n');
 process.stderr.write('   Ensure your usage complies with TradingView\'s Terms of Use.\n\n');
 

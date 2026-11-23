@@ -1,8 +1,3 @@
-/**
- * Core Pine Script logic — shared between MCP tools and CLI.
- * All functions accept plain options objects and return plain JS objects.
- * They throw on error (callers catch and format).
- */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
 import { waitFor, type WaitOptions } from '../wait.js';
 import { CHART_API, sleep } from './_page.js';
@@ -31,7 +26,6 @@ export function matchesSavedScript(title: string | null, saved: readonly SavedSc
 
 interface SavedScript { name: string; title: string | null }
 
-// ── Monaco finder (injected into TV page) ──
 const FIND_MONACO = `
   (function findMonacoEditor() {
     var container = document.querySelector('.monaco-editor.pine-editor-monaco');
@@ -98,8 +92,6 @@ export async function ensurePineEditorOpen() {
   }
   return false;
 }
-
-// ── Pure / offline functions ──
 
 export function analyze({ source }: { source: string }) {
   const lines = source.split('\n');
@@ -286,8 +278,6 @@ export async function check({ source, fetchFn = fetch }: { source: string; fetch
     note: compiled ? 'Pine Script compiled successfully.' : undefined,
   };
 }
-
-// ── Functions requiring TradingView connection ──
 
 export interface SourceSlice { source: string; from_line: number; to_line: number; truncated: boolean }
 

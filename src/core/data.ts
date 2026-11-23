@@ -1,6 +1,3 @@
-/**
- * Core data access logic.
- */
 import { evaluate, KNOWN_PATHS, safeString, requireFinite } from '../connection.js';
 import { CHART_API, type WithDeps } from './_page.js';
 import { symbolMatches } from '../wait.js';

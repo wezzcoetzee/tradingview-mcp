@@ -1,6 +1,3 @@
-/**
- * Core indicator settings logic.
- */
 import { safeString } from '../connection.js';
 import { parseJsonObject } from './json.js';
 import { CHART_API, resolveDeps as _resolve, type WithDeps } from './_page.js';

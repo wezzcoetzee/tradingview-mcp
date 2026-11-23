@@ -1,6 +1,3 @@
-/**
- * Snippets and helpers shared by the core modules.
- */
 import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, KNOWN_PATHS } from '../connection.js';
 import { waitForChartReady as _waitForChartReady, type WaitOptions } from '../wait.js';
 

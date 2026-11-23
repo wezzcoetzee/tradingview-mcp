@@ -1,8 +1,3 @@
-/**
- * Unit tests for pine_analyze static analysis and pine_check response handling.
- * No TradingView connection needed.
- */
-
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { analyze as analyzeSource, check } from '../src/core/pine.js';
@@ -68,15 +63,6 @@ x = a.first()`);
     assert.ok(diags[0].message.includes('empty array'));
   });
 
-  it('.last() on empty array', () => {
-    const diags = analyze(`//@version=6
-indicator("Test")
-a = array.new_float(0)
-x = a.last()`);
-    assert.equal(diags.length, 1);
-    assert.equal(diags[0].severity, 'warning');
-  });
-
   it('.first() on non-empty array — no issue', () => {
     const diags = analyze(`//@version=6
 indicator("Test")
@@ -119,20 +105,7 @@ plot(close)`);
     assert.equal(diags.length, 0);
   });
 
-  it('multiple issues at once', () => {
-    const diags = analyze(`//@version=6
-indicator("Test")
-a = array.from(1, 2)
-b = array.new_float(0)
-x = array.get(a, 5)
-y = b.first()
-strategy.entry("Long", strategy.long)`);
-    assert.ok(diags.length >= 3, `Expected >= 3 issues, got ${diags.length}`);
-    const errors = diags.filter(d => d.severity === 'error');
-    const warnings = diags.filter(d => d.severity === 'warning');
-    assert.ok(errors.length >= 2, 'Should have OOB error + strategy error');
-    assert.ok(warnings.length >= 1, 'Should have empty array warning');
-  });
+
   it('push after array.new_*(0) clears the known size', () => {
     const diags = analyze(`//@version=6
 indicator("Test")

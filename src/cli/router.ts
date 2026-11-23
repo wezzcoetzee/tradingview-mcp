@@ -134,7 +134,6 @@ export async function run(argv: string[]) {
   let target = cmd;
   let rest = args.slice(1);
 
-  // Handle subcommands (e.g., tv pine get)
   if (cmd.subcommands) {
     const subName = args[1];
     if (!subName || subName === '--help' || subName === '-h') {
@@ -176,7 +175,6 @@ async function execute(target: Command, values: Values<OptionMap>, positionals: 
 
 function handleError(err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
-  // Connection failures get exit code 2
   if (/CDP|connection|ECONNREFUSED|not running/i.test(message)) {
     console.error(JSON.stringify({ success: false, error: message }, null, 2));
     process.exit(2);

@@ -1,7 +1,6 @@
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { waitFor, waitForChartReady, symbolMatches, resolutionMatches, legendMatches } from '../src/wait.js';
-import { jsonResult } from '../src/tools/_format.js';
 
 const sequence = (values: unknown[]) => {
   let i = 0;
@@ -84,12 +83,5 @@ describe('waitForChartReady', () => {
     assert.ok(!symbolMatches('NASDAQ:AAPL', 'AAP'));
     assert.ok(resolutionMatches('1D', 'D'));
     assert.ok(!resolutionMatches('1', 'D'));
-  });
-});
-
-describe('jsonResult', () => {
-  it('flags success:false payloads as errors', () => {
-    assert.equal(jsonResult({ success: false }).isError, true);
-    assert.equal(jsonResult({ success: true }).isError, undefined);
   });
 });

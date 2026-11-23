@@ -1,9 +1,7 @@
 import { register, command } from '../router.js';
 import * as core from '../../core/stream.js';
 
-// Stream commands are special — they don't return JSON, they write JSONL to stdout forever.
-// The router's execute() wrapper won't work since these never resolve.
-// We override the handler to call the stream directly and never return.
+// Stream commands write JSONL forever and never resolve, so they bypass the router's execute() wrapper.
 
 register('stream', {
   description: 'Monitor your local TradingView chart for changes (JSONL output)',
@@ -15,7 +13,7 @@ register('stream', {
       },
       handler: async (opts) => {
         await core.streamQuote({ interval: opts.interval ? Number(opts.interval) : undefined });
-        process.exit(0); // unreachable unless stopped
+        process.exit(0);
       },
     })],
     ['bars', command({

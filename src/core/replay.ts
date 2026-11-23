@@ -1,6 +1,3 @@
-/**
- * Core replay mode logic.
- */
 import { evaluate as _evaluate, evaluateAsync as _evaluateAsync, getReplayApi as _getReplayApi, requireFinite } from '../connection.js';
 import { waitFor } from '../wait.js';
 import type { ReportProgress } from './progress.js';
@@ -157,7 +154,6 @@ export async function autoplay({ speed, enabled, _deps }: AutoplayParams = {}) {
   if (speed !== undefined) {
     await evaluate(`${rp}.changeAutoplayDelay(${speed})`);
   }
-  // `enabled` sets an explicit state; without it autoplay flips.
   const was = !!(await evaluate(wv(`${rp}.isAutoplayStarted()`)));
   const target = enabled ?? !was;
   if (target !== was) await evaluate(`${rp}.toggleAutoplay()`);

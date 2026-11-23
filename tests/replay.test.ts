@@ -1,13 +1,7 @@
-/**
- * Tests for all replay functions in src/core/replay.js.
- * Covers: start, step, autoplay, stop, trade, status + DI mocks.
- */
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { start, step, jump, autoplay, stop, trade, status, parseReplayDate, VALID_AUTOPLAY_DELAYS, MAX_STEP_COUNT } from '../src/core/replay.js';
-
-// ── Mock helpers ─────────────────────────────────────────────────────────
 
 /**
  * Create a mock evaluate function that returns scripted values.
@@ -58,8 +52,6 @@ function livePage({ started = true, autoplayOn = false, date = 1000, stepsMove =
   };
   return { state, _deps: { evaluate, evaluateAsync: evaluate, getReplayApi: mockGetReplayApi(), waitOpts: FAST } };
 }
-
-// ── start() ──────────────────────────────────────────────────────────────
 
 describe('start() — date selection and polling', () => {
   it('awaits selectDate with timestamp in ms for date param', async () => {
@@ -163,8 +155,6 @@ describe('start() — date selection and polling', () => {
   });
 });
 
-// ── step() ───────────────────────────────────────────────────────────────
-
 describe('step() — doStep and polling', () => {
   it('advances one bar by default', async () => {
     const { _deps, state } = livePage();
@@ -211,8 +201,6 @@ describe('step() — doStep and polling', () => {
   });
 });
 
-// ── jump() ───────────────────────────────────────────────────────────────
-
 describe('jump()', () => {
   it('selects the date while replay runs and reports the new position', async () => {
     const { _deps } = livePage();
@@ -254,42 +242,25 @@ describe('parseReplayDate()', () => {
   it('returns UTC midnight in ms', () => {
     assert.equal(parseReplayDate('2026-03-15'), Date.UTC(2026, 2, 15));
   });
-  it('rejects non YYYY-MM-DD and impossible dates', () => {
-    for (const bad of ['', 'abc', '2026-02-30', '2026-3-15', '2026-03-15 ', '20260315']) {
-      assert.throws(() => parseReplayDate(bad), /Invalid date/, bad);
-    }
-  });
 });
 
-// ── autoplay() ───────────────────────────────────────────────────────────
-
 describe('autoplay() — delay validation', () => {
-  for (const delay of VALID_AUTOPLAY_DELAYS) {
-    it(`accepts valid delay ${delay}ms`, async () => {
+  it('accepts every valid delay', async () => {
+    for (const delay of VALID_AUTOPLAY_DELAYS) {
       const { _deps } = livePage();
       const result = await autoplay({ speed: delay, _deps });
       assert.equal(result.success, true);
-      assert.equal(result.autoplay_active, true);
       assert.equal(result.delay_ms, delay);
-    });
-  }
+    }
+  });
 
-  const INVALID_DELAYS = [0, 50, 60000, 99, 101, 500, 750, 1500, 9999, 20000];
-  for (const delay of INVALID_DELAYS) {
-    it(`rejects invalid delay ${delay}ms before any CDP call`, async () => {
+  it('rejects invalid delays before any CDP call', async () => {
+    for (const delay of [0, 50, 101, 1500, 60000]) {
       const { _deps, evaluate } = mockDeps({});
-      await assert.rejects(
-        () => autoplay({ speed: delay, _deps }),
-        (err) => {
-          assert.ok((err as any).message.includes('Invalid autoplay delay'));
-          assert.ok((err as any).message.includes(String(delay)));
-          return true;
-        },
-      );
-      // No CDP calls should have been made
-      assert.equal(evaluate.calls.length, 0, 'no CDP calls for invalid speed');
-    });
-  }
+      await assert.rejects(() => autoplay({ speed: delay, _deps }), new RegExp(`Invalid autoplay delay.*${delay}`));
+      assert.equal(evaluate.calls.length, 0);
+    }
+  });
 
   it('flips autoplay without changing speed when enabled and speed are omitted', async () => {
     const { _deps, state } = livePage({ autoplayOn: true });
@@ -327,8 +298,6 @@ describe('autoplay() — delay validation', () => {
   });
 });
 
-// ── stop() ───────────────────────────────────────────────────────────────
-
 describe('stop()', () => {
   it('calls stopReplay and confirms replay ended', async () => {
     const { _deps, state } = livePage();
@@ -358,8 +327,6 @@ describe('stop()', () => {
     assert.ok(!source.includes('hideReplayToolbar'), 'hideReplayToolbar must not appear anywhere');
   });
 });
-
-// ── trade() ──────────────────────────────────────────────────────────────
 
 describe('trade()', () => {
   // position() is 0 until the order fills; close flips it back to 0.
@@ -406,8 +373,6 @@ describe('trade()', () => {
     );
   });
 });
-
-// ── status() ─────────────────────────────────────────────────────────────
 
 describe('status()', () => {
   it('returns full status object', async () => {

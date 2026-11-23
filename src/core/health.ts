@@ -1,6 +1,3 @@
-/**
- * Core health/discovery/launch logic.
- */
 import { getClient, getTargetInfo, evaluate, KNOWN_PATHS, cdpFetch, cdpBaseUrl, getCdpPort, parseCdpPort, setCdpPort, disconnect, resetAutoLaunchLatch } from '../connection.js';
 import { existsSync } from 'fs';
 import { execFile, execFileSync, execSync, spawn } from 'child_process';

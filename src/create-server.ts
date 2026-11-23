@@ -32,7 +32,6 @@ export function createServer(): McpServer {
     }
   );
 
-  // Register all tool groups
   registerHealthTools(server);
   registerChartTools(server);
   registerPineTools(server);

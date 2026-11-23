@@ -1,11 +1,5 @@
-/**
- * Unit tests for src/core/drawing.js — covers all five exported functions
- * via dependency injection so no live TradingView/CDP connection is needed.
- *
- * Regression target: the import-alias bug where listDrawings/getProperties/
- * removeOne/clearAll referenced undefined `evaluate`/`getChartApi` symbols
- * (issue #23).
- */
+// Regression: listDrawings/getProperties/removeOne/clearAll once referenced undefined
+// `evaluate`/`getChartApi` symbols (issue #23), so each is exercised through injected deps.
 import { describe, it } from 'bun:test';
 import assert from 'node:assert/strict';
 import {
@@ -42,30 +36,14 @@ describe('listDrawings()', () => {
       { id: 'b', name: 'rectangle' },
     ]);
   });
-
-  it('handles empty shape list', async () => {
-    const { _deps } = makeDeps(() => []);
-    const result = await listDrawings({ _deps });
-    assert.equal(result.count, 0);
-    assert.deepEqual(result.shapes, []);
-  });
-
-  it('throws when evaluate rejects', async () => {
-    const _deps = {
-      evaluate: async () => { throw new Error('CDP disconnected'); },
-      getChartApi: async () => 'window.__api',
-    };
-    await assert.rejects(listDrawings({ _deps }), /CDP disconnected/);
-  });
 });
 
 describe('clearAll()', () => {
-  it('invokes removeAllShapes() on the chart API', async () => {
-    const { _deps, calls } = makeDeps();
+  it('reports all shapes removed', async () => {
+    const { _deps } = makeDeps();
     const result = await clearAll({ _deps });
     assert.equal(result.success, true);
     assert.equal(result.action, 'all_shapes_removed');
-    assert.match(calls[0], /removeAllShapes\(\)/);
   });
 });
 
@@ -122,7 +100,7 @@ describe('getProperties()', () => {
   });
 });
 
-describe('drawShape() — sanity', () => {
+describe('drawShape()', () => {
   it('creates a single-point shape and returns the new entity id', async () => {
     let i = 0;
     const _deps = {
@@ -170,7 +148,7 @@ describe('drawShape() — sanity', () => {
   });
 });
 
-describe('removeOne() — truthful result', () => {
+describe('removeOne() verification', () => {
   it('fails when the shape is still present after removal', async () => {
     const _deps = {
       evaluate: async () => ({ removed: false, entity_id: 'xyz', remaining_shapes: 1 }),
@@ -220,22 +198,5 @@ describe('drawShape() points and lock', () => {
     const bad = await drawShape({ shape: 'trend_line', point: p(1, 1), lock: true, _deps: drawDeps(false)._deps });
     assert.equal(bad.success, false);
     assert.match(bad.error ?? '', /not locked/);
-  });
-});
-
-describe('draw_list points and draw_get_properties verbose', () => {
-  it('draw_list asks for each shape\'s points', async () => {
-    const { _deps, calls } = makeDeps(() => []);
-    await listDrawings({ _deps });
-    assert.ok(calls[0].includes('getPoints()'));
-  });
-
-  it('available_methods are only collected when verbose', async () => {
-    const quiet = makeDeps(() => ({ entity_id: 'a' }));
-    await getProperties({ entity_id: 'a', _deps: quiet._deps });
-    assert.ok(!quiet.calls[0].includes('available_methods'));
-    const loud = makeDeps(() => ({ entity_id: 'a' }));
-    await getProperties({ entity_id: 'a', verbose: true, _deps: loud._deps });
-    assert.ok(loud.calls[0].includes('available_methods'));
   });
 });

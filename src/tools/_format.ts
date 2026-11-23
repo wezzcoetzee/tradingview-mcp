@@ -1,7 +1,3 @@
-/**
- * Shared MCP tool helpers.
- * All tool files register through defineTool instead of calling server.tool directly.
- */
 import type { McpServer, ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type { CallToolResult, ServerNotification, ServerRequest, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';

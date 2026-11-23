@@ -68,10 +68,6 @@ export type QuitResult = {
   error?: string;
 };
 
-/**
- * Quit TradingView Desktop to free RAM after agent chart work.
- * Prefer graceful macOS quit; fall back to SIGTERM/taskkill.
- */
 export async function quitTradingView(opts: {
   /** If true, only quit when this MCP process launched TV. Default false (always quit). */
   only_if_agent_launched?: boolean;

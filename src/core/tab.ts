@@ -1,7 +1,3 @@
-/**
- * Core tab management logic.
- * Controls TradingView Desktop tabs via CDP and Electron keyboard shortcuts.
- */
 import { getClient, evaluate, disconnect, setPreferredTargetId, getPreferredTargetId, listTargets, pickChartTarget, cdpFetch } from '../connection.js';
 import { sleep } from './_page.js';
 
@@ -50,9 +46,6 @@ async function pressShortcut(key: string, code: string, windowsVirtualKeyCode: n
   await c.Input.dispatchKeyEvent({ type: 'keyUp', key, code });
 }
 
-/**
- * Open a new chart tab via keyboard shortcut (Ctrl+T / Cmd+T).
- */
 export async function newTab() {
   // TradingView Desktop opens tabs through its own UI, which does not render while hidden.
   if (await evaluate('document.hidden')) {
@@ -72,9 +65,6 @@ export async function newTab() {
   return { ...(await list()), action: 'new_tab_opened', tabs_before: before.tab_count, new_tab: { ...opened, active: true } };
 }
 
-/**
- * Close the current tab via keyboard shortcut (Ctrl+W / Cmd+W).
- */
 export async function closeTab() {
   const before = await list();
   if (before.tab_count <= 1) {
@@ -94,9 +84,6 @@ export async function closeTab() {
   return { success: true, action: 'tab_closed', tabs_before: before.tab_count, tabs_after: after.tab_count };
 }
 
-/**
- * Switch to a tab by index. Reconnects CDP to the new target.
- */
 export async function switchTab({ index }: { index?: unknown } = {}) {
   const idx = Number(index);
   if (!Number.isInteger(idx) || idx < 0) {

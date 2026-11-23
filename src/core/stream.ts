@@ -1,7 +1,3 @@
-/**
- * Core streaming logic — real-time JSONL output from TradingView.
- * Uses efficient poll + dedup: only emits when data changes.
- */
 import { evaluate } from '../connection.js';
 import { errorMessage } from '../debug.js';
 import { readGraphics, horizontalLevels, tableRows } from './data.js';
@@ -98,8 +94,6 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-// ── Stream: quote ──
-
 async function fetchQuote() {
   return evaluate(`
     (function() {
@@ -125,8 +119,6 @@ async function fetchQuote() {
 export async function streamQuote({ interval }: StreamParams = {}) {
   return pollLoop(fetchQuote, { interval: interval || 300, label: 'quote' });
 }
-
-// ── Stream: ohlcv (last N bars, emits on new bar) ──
 
 async function fetchLastBar() {
   return evaluate(`
@@ -155,8 +147,6 @@ async function fetchLastBar() {
 export async function streamBars({ interval }: StreamParams = {}) {
   return pollLoop(fetchLastBar, { interval: interval || 500, label: 'bars' });
 }
-
-// ── Stream: indicator values ──
 
 async function fetchValues() {
   return evaluate(`
@@ -189,8 +179,6 @@ async function fetchValues() {
 export async function streamValues({ interval }: StreamParams = {}) {
   return pollLoop(fetchValues, { interval: interval || 500, label: 'values' });
 }
-
-// ── Stream: pine graphics (shares the walker with the data_get_pine_* tools) ──
 
 const fetchSymbol = () => evaluate(`${CHART_API}.symbol()`);
 
@@ -226,8 +214,6 @@ export async function streamTables({ interval, filter }: StreamGraphicsParams = 
   });
   return pollLoop(fetchTables, { interval: interval || 2000, label: 'tables' });
 }
-
-// ── Stream: all panes (multi-symbol) ──
 
 const CWC = 'window.TradingViewApi._chartWidgetCollection';
 

@@ -1,7 +1,3 @@
-/**
- * Tests for the ui_evaluate gate. ui_evaluate runs arbitrary JS in the
- * TradingView page context, so it must be off unless explicitly enabled.
- */
 import { describe, it, beforeEach, afterEach } from 'bun:test';
 import assert from 'node:assert/strict';
 import { uiEvaluate } from '../src/core/ui.js';
@@ -15,6 +11,7 @@ function registeredUiTools() {
   return registered;
 }
 
+// ui_evaluate runs arbitrary JS in the page, so it must stay off unless explicitly enabled.
 describe('ui_evaluate — env-gated', () => {
   let prev: string | undefined;
   beforeEach(() => { prev = process.env.TRADINGVIEW_MCP_ALLOW_EVAL; });

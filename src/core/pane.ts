@@ -1,7 +1,3 @@
-/**
- * Core pane/layout management logic.
- * Controls multi-chart layouts (split panes) in TradingView.
- */
 import { evaluateAsync, safeString, requireText } from '../connection.js';
 import { waitFor, symbolMatches } from '../wait.js';
 import { CHART_API, own, resolveDeps as _resolve, type WithDeps } from './_page.js';
@@ -49,9 +45,6 @@ const LAYOUT_NAMES: Record<string, string> = {
 /** Every layout code or friendly alias setLayout accepts. */
 export const LAYOUT_INPUTS = [...Object.keys(LAYOUT_NAMES), ...Object.keys(LAYOUT_ALIASES)] as [string, ...string[]];
 
-/**
- * List all panes in the current layout with their symbols and index.
- */
 export async function list({ _deps }: WithDeps = {}) {
   const { evaluate } = _resolve(_deps);
   const result = await evaluate(`
@@ -92,7 +85,6 @@ export async function list({ _deps }: WithDeps = {}) {
 }
 
 /**
- * Set the chart layout grid.
  * @param {string} layout - Layout code: s, 2h, 2v, 2-1, 1-2, 3h, 3v, 4, 6, 8, etc.
  */
 export interface SetLayoutParams {
@@ -128,9 +120,6 @@ export async function setLayout({ layout }: SetLayoutParams) {
   };
 }
 
-/**
- * Focus a specific pane by index.
- */
 export interface FocusParams extends WithDeps {
   index: number;
 }
@@ -147,7 +136,6 @@ export async function focus({ index, _deps }: FocusParams) {
       var all = cwc.getAll();
       if (${idx} >= all.length) return { error: 'Pane index ' + ${idx} + ' out of range (have ' + all.length + ' panes)' };
       var chart = all[${idx}];
-      // Click the main div to activate it
       if (chart._mainDiv) chart._mainDiv.click();
       return { focused: ${idx}, total: all.length };
     })()
@@ -162,10 +150,6 @@ export async function focus({ index, _deps }: FocusParams) {
   return { success: true, focused_index: result.focused, total_panes: result.total };
 }
 
-/**
- * Set the symbol on a specific pane by index.
- * Works by focusing the pane, then using the active chart's setSymbol.
- */
 export interface SetPaneSymbolParams extends FocusParams {
   symbol: string;
 }
@@ -178,7 +162,6 @@ export async function setSymbol({ index, symbol: raw, _deps }: SetPaneSymbolPara
     throw new Error(`Pane index must be a non-negative integer (got ${JSON.stringify(index)})`);
   }
 
-  // Focus the target pane first
   const focused = await focus({ index: idx, _deps });
   if (!focused.success) return { ...focused, index: idx };
 
